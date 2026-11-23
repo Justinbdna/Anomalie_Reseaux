@@ -9,3 +9,7 @@ __pycache__/
 
 # Dépôt fil rouge de référence (non versionné ici)
 palmer-penguins/
+
+# Docs de cours et contexte Claude (local uniquement)
+docs_cours/
+CLAUDE.local.md
