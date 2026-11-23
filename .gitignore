@@ -1,0 +1,11 @@
+# Environnements virtuels & Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Système (macOS)
+.DS_Store
+
+# Dépôt fil rouge de référence (non versionné ici)
+palmer-penguins/
