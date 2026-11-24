@@ -144,3 +144,24 @@ Seuils calibrés exclusivement sur `val_df` (`7 528` lignes `allow`), puis éval
 
 - **Trafic habituel (`validation allow`)** : concentré autour de la médiane (`0,4410`), avec seulement `1,01 %` des observations au-dessus du seuil `0,6740`.
 - **Cas synthétiques** : nettement décalés à droite du seuil pour `exfiltration`, `flood` et `telechargement_massif` (`100 %` détectés), tandis que `connexion_fantome` reste sous le seuil (`0 %`), ce qui illustre visuellement la séparation et la principale limite du modèle.
+
+### Résultats finaux et limites du modèle (au seuil retenu `1 %`)
+
+#### Comparatif Baseline vs Isolation Forest (chiffres issus de `artifacts/metrics.json`)
+
+| Détecteur | Seuil (`val_df`) | Fausses alertes (`test allow`, `7 528`) | Rappel global (`200` synth.) | `exfiltration` | `flood` | `connexion_fantome` | `telechargement_massif` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **Baseline** (`bytes_sent + bytes_received`) | `1 163 002,6` octets | **0,94 %** (`71 / 7 528`) | **50,00 %** (`100 / 200`) | `100 %` | `0 %` | `0 %` | `100 %` |
+| **Isolation Forest** (`log1p` + 200 arbres) | `0,6740` | **1,01 %** (`76 / 7 528`) | **75,00 %** (`150 / 200`) | `100 %` | `100 %` | `0 %` | `100 %` |
+
+#### Analyse des types ratés par chaque détecteur
+- **Baseline (`bytes_sent + bytes_received`)** : ne regarde que le volume total d'octets. Il détecte à `100 %` les anomalies de volume (`exfiltration`, `telechargement_massif`), mais rate totalement (`0 %`) les anomalies comportementales à faible volume (`flood` et `connexion_fantome`).
+- **Isolation Forest (4 mesures)** : capte `100 %` des `flood` en plus des anomalies de volume (`+25` points de rappel global pour un taux de fausses alertes quasi identique à `1,01 %`), mais rate `connexion_fantome` (`0 %` au seuil `1 %`, `12 %` au seuil `2 %`). Ces sessions ont des volumes faibles et `1` seul paquet — proches du trafic `allow` courant — et seule leur durée élevée (`1 h` à `4 h`) les distingue, ce qui ne suffit pas toujours à les isoler au-dessus du `99e` percentile.
+
+#### Limites identifiées
+1. **Rappel mesuré sur des cas synthétiques fabriqués** : `log2.csv` ne contient pas d'étiquettes d'attaques réelles ; le rappel (`75 %`) dépend donc directement des 4 profils simulés et ne garantit pas la même performance face à des attaques réelles inédites ou plus discrètes.
+2. **`allow` n'est pas une vérité absolue de trafic sain** : le modèle apprend sur les flux autorisés par le pare-feu, qui peuvent déjà contenir du trafic malveillant passé inaperçu ou des transferts légitimes très volumineux (sources de fausses alertes).
+3. **Sensibilité limitée sur une anomalie portée par une seule mesure** : comme le montre `connexion_fantome` (`0 %` à `1 %`), lorsqu'une seule des 4 variables est extrême tandis que les 3 autres restent banales, l'isolation en 4 dimensions peut rester sous le seuil `P99`.
+4. **Absence de contexte réseau** : le modèle n'utilise ni ports, ni adresses IP, ni horodatage ; il évalue chaque session isolément sans détecter d'attaques distribuées ou répétées dans le temps.
+
+> **Limite choisie pour la soutenance :** *« `allow` n'est pas une vérité terrain et le rappel repose sur des cas synthétiques »* — le pare-feu fournit une référence de trafic habituel (pas des attaques étiquetées), et nos `75 %` de rappel mesurent la détection de profils construits par l'équipe, illustré concrètement par les `connexion_fantome` ratées lorsque seule la durée est extrême.
