@@ -6,7 +6,7 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 
 | Membre | Branche | Rôle | Fichiers principaux |
 | --- | --- | --- | --- |
-| **Aymen** | `aymen` | Données & Exploration | `data/log2.csv`, `features.py`, `explore.py`, `artifacts/*.png` |
+| **Aymen** | `aymen` | Données & Exploration | `data/log2.csv`, `features.py`, `explore.py`, `reports/trafic_allow.png` |
 | **Justin** | `justin` | Modèle IA | `train.py`, `artifacts/model.joblib` |
 | **Nassima** | `nassima` | Application (API + UI) | `api.py` (FastAPI), `app.py` (Streamlit) |
 | **Quentin** | `quentin` | DevOps, Tests & Intégration | `tests/`, `Dockerfile`, `docker-compose.yml` |
@@ -14,9 +14,49 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 - **`staging`** : branche d'intégration et de tests avant fusion dans `main`.
 - **`main`** : version stable prête pour la soutenance.
 
-## Sujet & jeu de données
-- **Source** : [Internet Firewall Data · UCI](https://archive.ics.uci.edu/dataset/542/internet+firewall+data) (`log2.csv`)
-- **Mesures** : `Bytes Sent`, `Bytes Received`, `Packets`, `Elapsed Time (sec)` (`Action` gardé à part pour isoler `allow`)
+## Sujet & jeu de données (P1 — Données)
+- **Source** : [Internet Firewall Data · UCI](https://archive.ics.uci.edu/dataset/542/internet+firewall+data) (`data/log2.csv`)
+- **Volume total** : **65 532 lignes** × **12 colonnes**
+- **Mesures retenues (4 variables)** : `Bytes Sent`, `Bytes Received`, `Packets`, `Elapsed Time (sec)` (`Action` gardé à part pour isoler le trafic normal `allow`)
+
+### Répartition par action (`Action`)
+| Action | Nombre de lignes | Part |
+| --- | ---: | ---: |
+| `allow` | **37 640** | 57,44 % |
+| `deny` | **14 987** | 22,87 % |
+| `drop` | **12 851** | 19,61 % |
+| `reset-both` | **54** | 0,08 % |
+| **Total** | **65 532** | **100,00 %** |
+
+### Contrôle qualité & nettoyage
+- **Valeurs manquantes (`NaN`)** : `0`
+- **Valeurs numériques illisibles** : `0`
+- **Valeurs négatives (`< 0`)** : `0` (cohérence vérifiée : `Bytes == Bytes Sent + Bytes Received` et `Packets == pkts_sent + pkts_received` sur 100 % des lignes)
+- **Doublons** :
+  - `8 362` doublons exacts sur les 12 colonnes (12,76 % du total : `6 945` en `deny`, `1 216` en `drop`, `201` en `allow`, `0` en `reset-both`).
+  - Sur les 4 variables dans `allow` (`37 640` lignes) : `19 777` doublons (`52,54 %`, soit `17 863` profils uniques).
+  - **Décision : doublons conservés.** Le fichier ne contient ni horodatage ni adresse IP : chaque ligne correspond à une session pare-feu distincte. Des trafics normaux répétitifs (notamment DNS sur le port 53) produisent naturellement les mêmes volumes ; les dédupliquer fausserait la distribution empirique apprise par le détecteur d'anomalies.
+
+### Statistiques du trafic normal (`allow`, `n = 37 640`)
+| Variable | Min | Q25 | Médiane | Q75 | P95 | P99 | Max |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Bytes Sent` | 60 | 94 | **126** | 1 586 | 9 293 | 64 722 | 948 477 220 |
+| `Bytes Received` | 0 | 91 | **220** | 3 063 | 58 599 | 1 225 556 | 320 881 795 |
+| `Packets` | 1 | 2 | **3** | 19 | 107 | 1 469 | 1 036 116 |
+| `Elapsed Time (sec)` | 0 | 27 | **30** | 49 | 360 | 1 201 | 10 824 |
+
+- **Visualisation** : `reports/trafic_allow.png` (générée par `python explore.py`, distributions en échelle `log10(1 + x)` avec IQR, médiane, P99 et repère du cas typique démo).
+
+### Cas habituel de référence pour la démo (P3)
+Vraie ligne `allow` la plus proche de la médiane des 4 mesures (index pandas `12871`, ligne CSV `12873`, trafic DNS sur le port destination `53`) :
+```json
+{
+  "bytes_sent": 168,
+  "bytes_received": 175,
+  "packets": 3,
+  "elapsed_time_sec": 30
+}
+```
 
 ## Contrat commun (pour travailler en parallèle)
 - **Modèle exporté** : `artifacts/model.joblib`
