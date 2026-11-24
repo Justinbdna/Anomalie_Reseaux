@@ -1,0 +1,136 @@
+{
+  "alert_rate_target": 0.01,
+  "random_state": 42,
+  "split_sizes": {
+    "train": 22584,
+    "validation": 7528,
+    "test": 7528,
+    "synthetic": 200
+  },
+  "baseline": {
+    "threshold": 1163002.6,
+    "false_alarm_rate": 0.009431,
+    "false_alarms_count": 71,
+    "test_size": 7528,
+    "synthetic_recall": 0.5,
+    "synthetic_detected": 100,
+    "synthetic_size": 200,
+    "recall_by_type": {
+      "exfiltration": 1.0,
+      "flood": 0.0,
+      "connexion_fantome": 0.0,
+      "telechargement_massif": 1.0
+    }
+  },
+  "isolation_forest": {
+    "threshold": 0.673987,
+    "false_alarm_rate": 0.010096,
+    "false_alarms_count": 76,
+    "test_size": 7528,
+    "synthetic_recall": 0.75,
+    "synthetic_detected": 150,
+    "synthetic_size": 200,
+    "recall_by_type": {
+      "exfiltration": 1.0,
+      "flood": 1.0,
+      "connexion_fantome": 0.0,
+      "telechargement_massif": 1.0
+    }
+  },
+  "alert_rate_study": {
+    "baseline": {
+      "0.5%": {
+        "threshold": 3721432.645,
+        "false_alarm_rate": 0.005978,
+        "false_alarms_count": 45,
+        "test_size": 7528,
+        "synthetic_recall": 0.5,
+        "synthetic_detected": 100,
+        "synthetic_size": 200,
+        "recall_by_type": {
+          "exfiltration": 1.0,
+          "flood": 0.0,
+          "connexion_fantome": 0.0,
+          "telechargement_massif": 1.0
+        }
+      },
+      "1%": {
+        "threshold": 1163002.6,
+        "false_alarm_rate": 0.009431,
+        "false_alarms_count": 71,
+        "test_size": 7528,
+        "synthetic_recall": 0.5,
+        "synthetic_detected": 100,
+        "synthetic_size": 200,
+        "recall_by_type": {
+          "exfiltration": 1.0,
+          "flood": 0.0,
+          "connexion_fantome": 0.0,
+          "telechargement_massif": 1.0
+        }
+      },
+      "2%": {
+        "threshold": 369063.18,
+        "false_alarm_rate": 0.019793,
+        "false_alarms_count": 149,
+        "test_size": 7528,
+        "synthetic_recall": 0.5,
+        "synthetic_detected": 100,
+        "synthetic_size": 200,
+        "recall_by_type": {
+          "exfiltration": 1.0,
+          "flood": 0.0,
+          "connexion_fantome": 0.0,
+          "telechargement_massif": 1.0
+        }
+      }
+    },
+    "isolation_forest": {
+      "0.5%": {
+        "threshold": 0.718702,
+        "false_alarm_rate": 0.005048,
+        "false_alarms_count": 38,
+        "test_size": 7528,
+        "synthetic_recall": 0.25,
+        "synthetic_detected": 50,
+        "synthetic_size": 200,
+        "recall_by_type": {
+          "exfiltration": 0.06,
+          "flood": 0.38,
+          "connexion_fantome": 0.0,
+          "telechargement_massif": 0.56
+        }
+      },
+      "1%": {
+        "threshold": 0.673987,
+        "false_alarm_rate": 0.010096,
+        "false_alarms_count": 76,
+        "test_size": 7528,
+        "synthetic_recall": 0.75,
+        "synthetic_detected": 150,
+        "synthetic_size": 200,
+        "recall_by_type": {
+          "exfiltration": 1.0,
+          "flood": 1.0,
+          "connexion_fantome": 0.0,
+          "telechargement_massif": 1.0
+        }
+      },
+      "2%": {
+        "threshold": 0.65456,
+        "false_alarm_rate": 0.0178,
+        "false_alarms_count": 134,
+        "test_size": 7528,
+        "synthetic_recall": 0.78,
+        "synthetic_detected": 156,
+        "synthetic_size": 200,
+        "recall_by_type": {
+          "exfiltration": 1.0,
+          "flood": 1.0,
+          "connexion_fantome": 0.12,
+          "telechargement_massif": 1.0
+        }
+      }
+    }
+  }
+}
