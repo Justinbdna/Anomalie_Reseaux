@@ -6,7 +6,7 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 
 | Membre | Branche | Rôle | Fichiers principaux |
 | --- | --- | --- | --- |
-| **Aymen** | `aymen` | Données & Exploration | `data/log2.csv`, `features.py`, `explore.py`, `reports/trafic_allow.png` |
+| **Aymen** | `aymen` | Données & Exploration | `data/log2.csv`, `features.py`, `explore.py`, `artifacts/*.png` |
 | **Justin** | `justin` | Modèle IA | `train.py`, `artifacts/model.joblib` |
 | **Nassima** | `nassima` | Application (API + UI) | `api.py` (FastAPI), `app.py` (Streamlit) |
 | **Quentin** | `quentin` | DevOps, Tests & Intégration | `tests/`, `Dockerfile`, `docker-compose.yml` |
@@ -15,9 +15,26 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 - **`main`** : version stable prête pour la soutenance.
 
 ## Sujet & jeu de données (P1 — Données)
-- **Source** : [Internet Firewall Data · UCI](https://archive.ics.uci.edu/dataset/542/internet+firewall+data) (`data/log2.csv`)
-- **Volume total** : **65 532 lignes** × **12 colonnes**
-- **Mesures retenues (4 variables)** : `Bytes Sent`, `Bytes Received`, `Packets`, `Elapsed Time (sec)` (`Action` gardé à part pour isoler le trafic normal `allow`)
+- **Nom du jeu** : *Internet Firewall Data* — [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/542/internet+firewall+data)
+- **Fichier versionné** : `data/log2.csv` (**65 532 lignes** × **12 colonnes**)
+- **DOI** : `10.24432/C5131M`
+- **Licence & droits** : **CC BY 4.0** (Creative Commons Attribution 4.0 — réutilisation, partage et adaptation autorisés en citant la source)
+
+### Description des 12 colonnes (`data/log2.csv`)
+| # | Colonne brute | Rôle dans le projet | Nom contrat API |
+| ---: | --- | --- | --- |
+| 1 | `Source Port` | Non utilisée (port source) | — |
+| 2 | `Destination Port` | Non utilisée (port destination) | — |
+| 3 | `NAT Source Port` | Non utilisée (port NAT source) | — |
+| 4 | `NAT Destination Port` | Non utilisée (port NAT destination) | — |
+| 5 | `Action` | **Gardée à part** (filtre pour isoler `allow`, jamais en entrée du modèle) | — |
+| 6 | `Bytes` | Non utilisée (redondante : `Bytes Sent + Bytes Received`) | — |
+| 7 | `Bytes Sent` | **Mesure utilisée (1/4)** — octets envoyés | `bytes_sent` |
+| 8 | `Bytes Received` | **Mesure utilisée (2/4)** — octets reçus | `bytes_received` |
+| 9 | `Packets` | **Mesure utilisée (3/4)** — nombre total de paquets | `packets` |
+| 10 | `Elapsed Time (sec)` | **Mesure utilisée (4/4)** — durée de session en secondes | `elapsed_time_sec` |
+| 11 | `pkts_sent` | Non utilisée (sous-détail de `Packets`) | — |
+| 12 | `pkts_received` | Non utilisée (sous-détail de `Packets`) | — |
 
 ### Répartition par action (`Action`)
 | Action | Nombre de lignes | Part |
