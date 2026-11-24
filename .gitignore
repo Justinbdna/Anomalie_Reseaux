@@ -13,3 +13,9 @@ palmer-penguins/
 # Docs de cours et contexte Claude (local uniquement)
 docs_cours/
 CLAUDE.local.md
+
+# Env & Jupyter
+.env
+.env.*
+!.env.example
+.ipynb_checkpoints/
