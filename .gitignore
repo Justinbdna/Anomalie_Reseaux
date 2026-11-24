@@ -10,6 +10,15 @@ __pycache__/
 # Dépôt fil rouge de référence (non versionné ici)
 palmer-penguins/
 
-# Secrets & modèle régénéré
+# Docs de cours et contexte Claude (local uniquement)
+docs_cours/
+CLAUDE.local.md
+
+# Env & Jupyter
 .env
-artifacts/model.joblib
+.env.*
+!.env.example
+.ipynb_checkpoints/
+
+# Données brutes (à télécharger localement depuis UCI dataset 542)
+data/log2.csv
