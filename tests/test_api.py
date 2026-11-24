@@ -82,3 +82,44 @@ def test_predict_refuse_bytes_received_negatif(client):
     reponse = client.post("/predict", json=ligne)
 
     assert reponse.status_code == 422
+
+
+def test_erreur_octets_negatifs_message_en_francais(client):
+    ligne = {**LIGNE_VALIDE, "bytes_sent": -1}
+
+    reponse = client.post("/predict", json=ligne)
+
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"] == [
+        {"field": "bytes_sent", "message": "Octets envoyés ne peut pas être négatif."}
+    ]
+
+
+def test_erreur_champ_manquant(client):
+    ligne = {**LIGNE_VALIDE}
+    del ligne["packets"]
+
+    reponse = client.post("/predict", json=ligne)
+
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"] == [
+        {"field": "packets", "message": "Nombre de paquets est obligatoire."}
+    ]
+
+
+def test_erreur_texte_au_lieu_d_un_nombre(client):
+    ligne = {**LIGNE_VALIDE, "bytes_received": "beaucoup"}
+
+    reponse = client.post("/predict", json=ligne)
+
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"] == [
+        {"field": "bytes_received", "message": "Octets reçus doit être un nombre."}
+    ]
+
+
+def test_erreur_corps_vide(client):
+    reponse = client.post("/predict")
+
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"][0]["field"] == "body"

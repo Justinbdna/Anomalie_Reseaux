@@ -11,7 +11,9 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 # Chemin du modèle exporté par train.py.
@@ -20,6 +22,54 @@ from pydantic import BaseModel, Field
 MODEL_PATH = os.getenv("MODEL_PATH", "artifacts/model.joblib")
 
 app = FastAPI(title="Anomalie Réseaux API")
+
+# Nom en français de chaque champ, utilisé dans les messages d'erreur.
+LIBELLES = {
+    "bytes_sent": "Octets envoyés",
+    "bytes_received": "Octets reçus",
+    "packets": "Nombre de paquets",
+    "elapsed_time_sec": "Durée",
+}
+
+# Champs au féminin ("Durée ne peut pas être négative").
+CHAMPS_FEMININS = {"elapsed_time_sec"}
+
+
+def message_en_francais(erreur):
+    """Transforme une erreur de Pydantic en {"field": ..., "message": ...}."""
+    # erreur["loc"] ressemble à ("body", "bytes_sent") : le dernier élément
+    # est le nom du champ. S'il n'y a que ("body",), c'est tout le corps
+    # de la requête qui pose problème (vide ou JSON invalide).
+    loc = erreur["loc"]
+    champ = loc[-1] if len(loc) > 1 and isinstance(loc[-1], str) else "body"
+
+    if champ not in LIBELLES:
+        return {
+            "field": "body",
+            "message": "Le corps de la requête doit être un JSON avec les 4 mesures.",
+        }
+
+    libelle = LIBELLES[champ]
+    type_erreur = erreur["type"]
+
+    if type_erreur == "greater_than_equal":
+        negatif = "négative" if champ in CHAMPS_FEMININS else "négatif"
+        message = f"{libelle} ne peut pas être {negatif}."
+    elif type_erreur == "missing":
+        message = f"{libelle} est obligatoire."
+    elif type_erreur in ("float_parsing", "float_type"):
+        message = f"{libelle} doit être un nombre."
+    else:
+        message = f"{libelle} : valeur invalide."
+
+    return {"field": champ, "message": message}
+
+
+@app.exception_handler(RequestValidationError)
+def erreurs_de_validation(request: Request, exc: RequestValidationError):
+    """Remplace les erreurs 422 de FastAPI (en anglais) par des messages en français."""
+    details = [message_en_francais(erreur) for erreur in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": details})
 
 
 class LogLine(BaseModel):
