@@ -12,6 +12,9 @@ from sklearn.preprocessing import FunctionTransformer
 
 FEATURES = ["bytes_sent", "bytes_received", "packets", "elapsed_time_sec"]
 DATA_PATH = Path("data/log2.csv")
+ARTIFACTS_DIR = Path("artifacts")
+SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
+SYNTHETIC_PER_TYPE = 50
 RANDOM_STATE = 42
 
 COLUMN_MAPPING = {
@@ -92,8 +95,68 @@ def compute_baseline_scores(df: pd.DataFrame) -> np.ndarray:
     return (df["bytes_sent"] + df["bytes_received"]).to_numpy(dtype=float)
 
 
+def generate_synthetic_anomalies(
+    n_per_type: int = SYNTHETIC_PER_TYPE, random_state: int = RANDOM_STATE
+) -> pd.DataFrame:
+    """Génère 4 types de lignes réseau atypiques reproductibles et sans valeurs négatives."""
+    # Aucun label d'attaque dans log2.csv : ces 4 profils servent à mesurer le rappel.
+    rng = np.random.default_rng(random_state)
+
+    exfiltration = pd.DataFrame(
+        {
+            "bytes_sent": rng.integers(5_000_000, 50_000_000, size=n_per_type),
+            "bytes_received": rng.integers(60, 2_000, size=n_per_type),
+            "packets": rng.integers(3_000, 35_000, size=n_per_type),
+            "elapsed_time_sec": rng.integers(5, 300, size=n_per_type),
+            "type": "exfiltration",
+        }
+    )
+    flood = pd.DataFrame(
+        {
+            "bytes_sent": rng.integers(0, 600, size=n_per_type),
+            "bytes_received": np.zeros(n_per_type, dtype=int),
+            "packets": rng.integers(500, 5_000, size=n_per_type),
+            "elapsed_time_sec": np.zeros(n_per_type, dtype=int),
+            "type": "flood",
+        }
+    )
+    connexion_fantome = pd.DataFrame(
+        {
+            "bytes_sent": rng.integers(60, 200, size=n_per_type),
+            "bytes_received": rng.integers(0, 100, size=n_per_type),
+            "packets": np.ones(n_per_type, dtype=int),
+            "elapsed_time_sec": rng.integers(3_600, 14_400, size=n_per_type),
+            "type": "connexion_fantome",
+        }
+    )
+    telechargement_massif = pd.DataFrame(
+        {
+            "bytes_sent": rng.integers(100, 5_000, size=n_per_type),
+            "bytes_received": rng.integers(5_000_000, 50_000_000, size=n_per_type),
+            "packets": rng.integers(3_000, 35_000, size=n_per_type),
+            "elapsed_time_sec": rng.integers(10, 600, size=n_per_type),
+            "type": "telechargement_massif",
+        }
+    )
+
+    synthetic_df = pd.concat(
+        [exfiltration, flood, connexion_fantome, telechargement_massif],
+        ignore_index=True,
+    )
+    return synthetic_df[FEATURES + ["type"]]
+
+
+def save_synthetic_anomalies(
+    synthetic_df: pd.DataFrame, path: Path = SYNTHETIC_PATH
+) -> Path:
+    """Sauvegarde les cas synthétiques dans artifacts/cas_synthetiques.csv."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    synthetic_df.to_csv(path, index=False)
+    return path
+
+
 def main() -> None:
-    """Charge les données, entraîne Isolation Forest et affiche un aperçu des scores."""
+    """Charge les données, entraîne Isolation Forest et génère les cas synthétiques."""
     df = load_and_clean(DATA_PATH)
     train_df, val_df, test_df = split_allow(df, random_state=RANDOM_STATE)
 
@@ -103,6 +166,11 @@ def main() -> None:
 
     val_scores = compute_anomaly_scores(pipeline, val_df)
     baseline_val_scores = compute_baseline_scores(val_df)
+
+    synthetic_df = generate_synthetic_anomalies(
+        n_per_type=SYNTHETIC_PER_TYPE, random_state=RANDOM_STATE
+    )
+    synthetic_path = save_synthetic_anomalies(synthetic_df, SYNTHETIC_PATH)
 
     print(
         f"Lignes allow : train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
@@ -121,6 +189,10 @@ def main() -> None:
         f"médiane={np.median(baseline_val_scores):.1f}, "
         f"p99={np.percentile(baseline_val_scores, 99):.1f}, "
         f"max={baseline_val_scores.max():.1f}"
+    )
+    print(
+        f"Cas synthétiques sauvegardés : {len(synthetic_df)} lignes "
+        f"({synthetic_df['type'].nunique()} types) -> {synthetic_path}"
     )
 
 
