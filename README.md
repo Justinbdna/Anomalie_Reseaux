@@ -14,6 +14,22 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 - **`staging`** : branche d'intégration et de tests avant fusion dans `main`.
 - **`main`** : version stable prête pour la soutenance.
 
+## Flux de travail Git
+
+```
+branche perso  ──PR──►  staging  ──PR──►  main
+(aymen, justin,        (intégration       (version stable,
+ nassima, quentin)      et tests)          soutenance)
+```
+
+1. **Avant de commencer** : `git checkout <ma-branche>` puis `git pull origin staging` pour partir de la dernière version intégrée.
+2. **Je travaille** sur ma branche perso, un commit par issue (ex. `feat: ... (#29)`).
+3. **PR vers `staging`** : la description contient `Closes #n` pour fermer l'issue automatiquement au merge.
+4. **Quand `staging` est vert** (tests `pytest` OK), PR de `staging` vers `main`.
+5. Personne ne pousse directement sur `staging` ni `main`.
+
+**Suivi** : les issues sont suivies dans le board GitHub Projects (colonnes *To do*, *In progress*, *Review*, *Done*).
+
 ## Sujet & jeu de données (P1 — Données)
 - **Nom du jeu** : *Internet Firewall Data* — [UCI Machine Learning Repository (dataset 542)](https://archive.ics.uci.edu/dataset/542/internet+firewall+data) (**65 532 lignes** × **12 colonnes**)
 - **DOI** : `10.24432/C5131M`

@@ -55,8 +55,12 @@ def modele_temporaire(tmp_path_factory, faux_journal) -> Path:
         ]
     ).fit(X)
 
-    # Seuil : on considère comme anormal le 1 % de scores les plus bas.
-    seuil = float(np.quantile(pipeline.score_samples(X), 0.01))
+    # Contrat de train.py : score = -score_samples (plus grand = plus atypique)
+    # et is_anomaly = score >= seuil.
+    # Seuil = percentile 90 (et non 99 comme train.py) : le faux journal n'a que
+    # 160 lignes allow, un P99 (0.5868) laisserait passer un cas d'exfiltration
+    # (score 0.5498). Avec P90 (0.5466) : normal 0.507 -> False, exfiltration -> True.
+    seuil = float(np.quantile(-pipeline.score_samples(X), 0.90))
 
     chemin = tmp_path_factory.mktemp("modele") / "model.joblib"
     joblib.dump(
