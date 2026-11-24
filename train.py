@@ -3,6 +3,7 @@
 from pathlib import Path
 import time
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
@@ -13,6 +14,7 @@ from sklearn.preprocessing import FunctionTransformer
 FEATURES = ["bytes_sent", "bytes_received", "packets", "elapsed_time_sec"]
 DATA_PATH = Path("data/log2.csv")
 ARTIFACTS_DIR = Path("artifacts")
+MODEL_PATH = ARTIFACTS_DIR / "model.joblib"
 SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
 SYNTHETIC_PER_TYPE = 50
 ALERT_RATE = 0.01
@@ -169,6 +171,24 @@ def save_synthetic_anomalies(
     return path
 
 
+def save_model_artifact(
+    pipeline: Pipeline,
+    threshold: float,
+    features: list[str] = FEATURES,
+    path: Path = MODEL_PATH,
+) -> Path:
+    """Sauvegarde le dict {pipeline, threshold, features} selon le contrat de l'API."""
+    # Contrat commun avec api.py : exactement ces 3 clés et l'ordre des 4 colonnes.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    artifact = {
+        "pipeline": pipeline,
+        "threshold": float(threshold),
+        "features": list(features),
+    }
+    joblib.dump(artifact, path)
+    return path
+
+
 def main() -> None:
     """Charge les données, entraîne Isolation Forest et génère les cas synthétiques."""
     df = load_and_clean(DATA_PATH)
@@ -190,6 +210,7 @@ def main() -> None:
         n_per_type=SYNTHETIC_PER_TYPE, random_state=RANDOM_STATE
     )
     synthetic_path = save_synthetic_anomalies(synthetic_df, SYNTHETIC_PATH)
+    model_path = save_model_artifact(pipeline, iforest_threshold, FEATURES, MODEL_PATH)
 
     print(
         f"Lignes allow : train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
@@ -225,6 +246,7 @@ def main() -> None:
         f"Cas synthétiques sauvegardés : {len(synthetic_df)} lignes "
         f"({synthetic_df['type'].nunique()} types) -> {synthetic_path}"
     )
+    print(f"Modèle exporté : {model_path} (seuil={iforest_threshold:.4f})")
 
 
 if __name__ == "__main__":
