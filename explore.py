@@ -206,9 +206,32 @@ def plot_allow_traffic(
     return output_path
 
 
+def first_control(path: Path = DATA_PATH) -> dict[str, object]:
+    """Premier contrôle (D2) : comptage par Action et vérification des valeurs manquantes."""
+    df_raw = load_raw_logs(path)
+    action_counts = df_raw[ACTION_COLUMN].value_counts(dropna=False).to_dict()
+    missing_by_col = {col: int(cnt) for col, cnt in df_raw.isna().sum().items()}
+    return {
+        "total_rows": len(df_raw),
+        "n_columns": int(df_raw.shape[1]),
+        "action_counts": {str(k): int(v) for k, v in action_counts.items()},
+        "missing_by_column": missing_by_col,
+        "total_missing": sum(missing_by_col.values()),
+    }
+
+
 def run_exploration(path: Path = DATA_PATH) -> None:
     """Exécute le contrôle qualité complet et génère le graphique d'exploration."""
-    # 1. Lecture brute (chaînes) pour détecter toute valeur illisible
+    # 1. Premier contrôle (D2) : comptage des actions et absence de valeurs manquantes
+    ctrl = first_control(path)
+    print("=== 1. PREMIER CONTRÔLE (D2 — data/log2.csv) ===")
+    print(f"Lignes totales : {ctrl['total_rows']:,} | Colonnes : {ctrl['n_columns']}")
+    for action, count in ctrl["action_counts"].items():
+        pct = 100.0 * count / ctrl["total_rows"]
+        print(f"  - {action:12s}: {count:6d} ({pct:5.2f} %)")
+    print(f"Valeurs manquantes (NaN, sur les 12 colonnes) : {ctrl['total_missing']}")
+
+    # 2. Lecture brute (chaînes) pour détecter toute valeur illisible
     df_str = pd.read_csv(path, dtype=str)
     unreadable_counts: dict[str, int] = {}
     for col in [c for c in df_str.columns if c != ACTION_COLUMN]:
@@ -218,13 +241,6 @@ def run_exploration(path: Path = DATA_PATH) -> None:
     df_raw = load_raw_logs(path)
     df_clean = clean_logs(df_raw)
     allow_df = df_clean.loc[df_clean[ACTION_COLUMN] == ALLOW_ACTION].copy()
-
-    print("=== 1. PREMIER CONTRÔLE (data/log2.csv) ===")
-    print(f"Lignes totales : {len(df_raw):,} | Colonnes : {df_raw.shape[1]}")
-    action_counts = df_raw[ACTION_COLUMN].value_counts(dropna=False)
-    for action, count in action_counts.items():
-        pct = 100.0 * count / len(df_raw)
-        print(f"  - {action:12s}: {count:6d} ({pct:5.2f} %)")
 
     print("\n=== 2. NETTOYAGE & QUALITÉ ===")
     total_unreadable = sum(unreadable_counts.values())

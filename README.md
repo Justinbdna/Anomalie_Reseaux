@@ -36,7 +36,9 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 | 11 | `pkts_sent` | Non utilisée (sous-détail de `Packets`) | — |
 | 12 | `pkts_received` | Non utilisée (sous-détail de `Packets`) | — |
 
-### Répartition par action (`Action`)
+### Premier contrôle : répartition par action (`Action`) & valeurs manquantes (D2)
+Contrôle exécuté via `python explore.py` (`first_control()`) : **0 valeur manquante (`NaN`)** détectée sur l'ensemble des 12 colonnes (`65 532` lignes complètes). La classe **`allow`** (`37 640` lignes, soit `57,44 %`) constitue la référence de trafic habituel pour l'entraînement non supervisé.
+
 | Action | Nombre de lignes | Part |
 | --- | ---: | ---: |
 | `allow` | **37 640** | 57,44 % |
