@@ -69,6 +69,13 @@ Contrôle exécuté via `python explore.py` (`first_control()`) : **0 valeur man
   - **Distributions très étalées (queue lourde)** : les volumes s'étendent sur 6 à 9 ordres de grandeur (jusqu'à `948 Mo` envoyés, `321 Mo` reçus, `1,04 M` paquets et `3 h` de session), d'où la nécessité d'une échelle logarithmique (`log10(1 + x)`) pour visualiser la distribution et de la transformation `log1p` avant Isolation Forest.
   - **Valeurs extrêmes** : dès le `99e` percentile (`P99` : `64 722` octets envoyés, `1,23 Mo` reçus, `1 469` paquets, `1 201 s`), on entre dans des transferts massifs ou sessions longues qui représentent des candidats naturels aux anomalies de volume.
 
+### Découpage train / validation / test du trafic normal (D5)
+Implémenté dans `features.py` via `split_allow(df, random_state=42, max_rows=50_000)` (signature directement importée par `train.py`) :
+- **Entraînement (60 %)** : **22 584** lignes `allow`
+- **Validation (20 %, réglage du seuil)** : **7 528** lignes `allow`
+- **Test (20 %, évaluation finale jamais vue)** : **7 528** lignes `allow`
+- **Plafond d'échantillonnage** : `50 000` lignes (non déclenché ici car `37 640 <= 50 000`), zéro recouvrement, découpage 100 % reproductible (`random_state=42`).
+
 ### Cas habituel de référence pour la démo (P3)
 Vraie ligne `allow` la plus proche de la médiane des 4 mesures (index pandas `12871`, ligne CSV `12873`, trafic DNS sur le port destination `53`) :
 ```json

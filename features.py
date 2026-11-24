@@ -23,11 +23,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 DATA_PATH = Path("data/log2.csv")
 ACTION_COLUMN = "Action"
 ALLOW_ACTION = "allow"
 RANDOM_STATE = 42
+MAX_ALLOW_ROWS = 50_000
 
 COLUMN_MAPPING: dict[str, str] = {
     "Bytes Sent": "bytes_sent",
@@ -84,6 +86,42 @@ def load_and_clean(path: str | Path = DATA_PATH) -> pd.DataFrame:
     df[ACTION_COLUMN] = df[ACTION_COLUMN].astype(str).str.strip().str.lower()
     valid_mask = (df[FEATURES] >= 0).all(axis=1)
     return df.loc[valid_mask].reset_index(drop=True)
+
+
+def split_allow(
+    df: pd.DataFrame,
+    random_state: int = RANDOM_STATE,
+    max_rows: int | None = MAX_ALLOW_ROWS,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Découpe les lignes 'allow' en train (60 %), validation (20 %) et test (20 %) (D5).
+
+    - Filtre uniquement le trafic normal (Action == 'allow').
+    - Échantillonne à `max_rows` (50 000 par défaut) si le volume dépasse ce seuil.
+    - Garantit l'absence de recouvrement entre les 3 jeux et une reproductibilité
+      stricte grâce à `random_state=42`.
+    - Signature alignée sur `train.py` (Justin).
+    """
+    action_norm = df[ACTION_COLUMN].astype(str).str.strip().str.lower()
+    allow_df = df.loc[action_norm == ALLOW_ACTION].copy()
+
+    if max_rows is not None and len(allow_df) > max_rows:
+        allow_df = allow_df.sample(n=max_rows, random_state=random_state)
+
+    train_df, temp_df = train_test_split(
+        allow_df,
+        test_size=0.4,
+        random_state=random_state,
+    )
+    val_df, test_df = train_test_split(
+        temp_df,
+        test_size=0.5,
+        random_state=random_state,
+    )
+    return (
+        train_df.reset_index(drop=True),
+        val_df.reset_index(drop=True),
+        test_df.reset_index(drop=True),
+    )
 
 
 def audit_cleaning(path: str | Path = DATA_PATH) -> dict[str, Any]:
