@@ -20,6 +20,7 @@ METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
 SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
 SYNTHETIC_PER_TYPE = 50
 ALERT_RATE = 0.01
+ALERT_RATES_STUDY = (0.005, 0.01, 0.02)
 RANDOM_STATE = 42
 
 COLUMN_MAPPING = {
@@ -219,6 +220,24 @@ def evaluate_detector(
     }
 
 
+def evaluate_alert_rates(
+    val_scores: np.ndarray,
+    test_scores: np.ndarray,
+    synthetic_scores: np.ndarray,
+    synthetic_types: pd.Series,
+    alert_rates: tuple[float, ...] = ALERT_RATES_STUDY,
+) -> dict[str, dict[str, object]]:
+    """Compare plusieurs taux d'alertes cibles (seuils fixés sur la validation)."""
+    # Permet d'objectiver le compromis fausses alertes / rappel sans toucher au test.
+    results: dict[str, dict[str, object]] = {}
+    for rate in alert_rates:
+        threshold = compute_threshold(val_scores, alert_rate=rate)
+        results[f"{rate * 100:g}%"] = evaluate_detector(
+            test_scores, synthetic_scores, synthetic_types, threshold
+        )
+    return results
+
+
 def save_metrics(
     metrics: dict[str, object], path: Path = METRICS_PATH
 ) -> Path:
@@ -280,6 +299,22 @@ def main() -> None:
             synthetic_df["type"],
             iforest_threshold,
         ),
+        "alert_rate_study": {
+            "baseline": evaluate_alert_rates(
+                baseline_val_scores,
+                baseline_test_scores,
+                baseline_synth_scores,
+                synthetic_df["type"],
+                ALERT_RATES_STUDY,
+            ),
+            "isolation_forest": evaluate_alert_rates(
+                val_scores,
+                test_scores,
+                synth_scores,
+                synthetic_df["type"],
+                ALERT_RATES_STUDY,
+            ),
+        },
     }
     metrics_path = save_metrics(metrics, METRICS_PATH)
 
@@ -326,6 +361,17 @@ def main() -> None:
             f"({res['false_alarms_count']}/{res['test_size']}) | "
             f"rappel synthétiques = {res['synthetic_recall'] * 100:.2f} % "
             f"({res['synthetic_detected']}/{res['synthetic_size']})"
+        )
+    print("Étude des taux d'alertes (0.5 %, 1 %, 2 %) :")
+    for rate_key in ("0.5%", "1%", "2%"):
+        bl = metrics["alert_rate_study"]["baseline"][rate_key]
+        iso = metrics["alert_rate_study"]["isolation_forest"][rate_key]
+        print(
+            f"  cible {rate_key:>4} | baseline: FA={bl['false_alarm_rate'] * 100:.2f}% "
+            f"rappel={bl['synthetic_recall'] * 100:.2f}% | "
+            f"isolation_forest: seuil={iso['threshold']:.4f} "
+            f"FA={iso['false_alarm_rate'] * 100:.2f}% "
+            f"rappel={iso['synthetic_recall'] * 100:.2f}%"
         )
     print(f"Métriques exportées : {metrics_path}")
 
