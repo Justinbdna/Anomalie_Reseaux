@@ -15,10 +15,12 @@ Mini-hackathon Data & IA (HETIC) — Détection d'anomalies dans des journaux de
 - **`main`** : version stable prête pour la soutenance.
 
 ## Sujet & jeu de données (P1 — Données)
-- **Nom du jeu** : *Internet Firewall Data* — [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/542/internet+firewall+data)
-- **Fichier versionné** : `data/log2.csv` (**65 532 lignes** × **12 colonnes**)
+- **Nom du jeu** : *Internet Firewall Data* — [UCI Machine Learning Repository (dataset 542)](https://archive.ics.uci.edu/dataset/542/internet+firewall+data) (**65 532 lignes** × **12 colonnes**)
 - **DOI** : `10.24432/C5131M`
 - **Licence & droits** : **CC BY 4.0** (Creative Commons Attribution 4.0 — réutilisation, partage et adaptation autorisés en citant la source)
+- **Récupération locale (`data/log2.csv`, non versionné)** :
+  1. Télécharger l'archive ZIP sur [UCI dataset 542](https://archive.ics.uci.edu/dataset/542/internet+firewall+data) (`https://archive.ics.uci.edu/static/public/542/internet+firewall+data.zip`).
+  2. Extraire `log2.csv` et le placer dans `data/log2.csv` à la racine du projet.
 
 ### Description des 12 colonnes (`data/log2.csv`)
 | # | Colonne brute | Rôle dans le projet | Nom contrat API |
