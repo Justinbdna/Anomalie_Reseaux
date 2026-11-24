@@ -10,7 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 # Chemin du modèle exporté par train.py.
@@ -48,6 +49,13 @@ class LogLine(BaseModel):
     }
 
 
+class Prediction(BaseModel):
+    """Réponse de POST /predict (contrat commun du README)."""
+
+    score: float = Field(..., description="Score d'anomalie : plus il est grand, plus la ligne est atypique")
+    is_anomaly: bool = Field(..., description="True si le score atteint le seuil du modèle")
+
+
 @lru_cache(maxsize=1)
 def load_model():
     """Charge le modèle une seule fois puis le garde en mémoire (cache).
@@ -69,11 +77,25 @@ def health():
     return {"status": "ok", "model_loaded": modele is not None}
 
 
-@app.post("/predict")
+@app.post("/predict", response_model=Prediction)
 def predict(ligne: LogLine):
-    """Reçoit une ligne de journal validée.
+    """Calcule le score d'anomalie d'une ligne de journal et dit si c'est une alerte."""
+    modele = load_model()
 
-    Pour l'instant (issue #18), on renvoie simplement les valeurs reçues.
-    Le calcul de "score" et "is_anomaly" avec le modèle arrive dans l'issue #19.
-    """
-    return {"received": ligne.model_dump()}
+    # Pas de modèle : on répond 503 ("service indisponible") avec un message clair.
+    if modele is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Modèle introuvable : lancez d'abord python train.py",
+        )
+
+    # Le pipeline a été entraîné sur un DataFrame : on lui donne une ligne
+    # avec les mêmes colonnes, dans le même ordre.
+    X = pd.DataFrame([ligne.model_dump()])[modele["features"]]
+
+    # Même calcul que train.py : score_samples() est plus bas quand la ligne
+    # est atypique, donc on inverse le signe (plus grand = plus atypique).
+    score = float(-modele["pipeline"].score_samples(X)[0])
+    is_anomaly = score >= modele["threshold"]
+
+    return Prediction(score=score, is_anomaly=is_anomaly)
