@@ -15,6 +15,7 @@ DATA_PATH = Path("data/log2.csv")
 ARTIFACTS_DIR = Path("artifacts")
 SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
 SYNTHETIC_PER_TYPE = 50
+ALERT_RATE = 0.01
 RANDOM_STATE = 42
 
 COLUMN_MAPPING = {
@@ -95,6 +96,19 @@ def compute_baseline_scores(df: pd.DataFrame) -> np.ndarray:
     return (df["bytes_sent"] + df["bytes_received"]).to_numpy(dtype=float)
 
 
+def compute_threshold(
+    val_scores: np.ndarray, alert_rate: float = ALERT_RATE
+) -> float:
+    """Fixe le seuil au quantile (1 - alert_rate) des scores de validation uniquement."""
+    # Seuil calibré uniquement sur la validation pour ne jamais contaminer le jeu de test.
+    return float(np.quantile(val_scores, 1.0 - alert_rate))
+
+
+def predict_anomalies(scores: np.ndarray, threshold: float) -> np.ndarray:
+    """Déclenche une alerte (True) pour chaque score supérieur ou égal au seuil."""
+    return scores >= threshold
+
+
 def generate_synthetic_anomalies(
     n_per_type: int = SYNTHETIC_PER_TYPE, random_state: int = RANDOM_STATE
 ) -> pd.DataFrame:
@@ -167,6 +181,11 @@ def main() -> None:
     val_scores = compute_anomaly_scores(pipeline, val_df)
     baseline_val_scores = compute_baseline_scores(val_df)
 
+    iforest_threshold = compute_threshold(val_scores, alert_rate=ALERT_RATE)
+    baseline_threshold = compute_threshold(baseline_val_scores, alert_rate=ALERT_RATE)
+    iforest_val_alerts = predict_anomalies(val_scores, iforest_threshold)
+    baseline_val_alerts = predict_anomalies(baseline_val_scores, baseline_threshold)
+
     synthetic_df = generate_synthetic_anomalies(
         n_per_type=SYNTHETIC_PER_TYPE, random_state=RANDOM_STATE
     )
@@ -189,6 +208,18 @@ def main() -> None:
         f"médiane={np.median(baseline_val_scores):.1f}, "
         f"p99={np.percentile(baseline_val_scores, 99):.1f}, "
         f"max={baseline_val_scores.max():.1f}"
+    )
+    print(
+        f"Seuil Isolation Forest (val, cible {ALERT_RATE * 100:.1f} %) : "
+        f"{iforest_threshold:.4f} -> taux observé val = "
+        f"{iforest_val_alerts.mean() * 100:.2f} % "
+        f"({int(iforest_val_alerts.sum())}/{len(val_df)})"
+    )
+    print(
+        f"Seuil baseline (val, cible {ALERT_RATE * 100:.1f} %) : "
+        f"{baseline_threshold:.1f} -> taux observé val = "
+        f"{baseline_val_alerts.mean() * 100:.2f} % "
+        f"({int(baseline_val_alerts.sum())}/{len(val_df)})"
     )
     print(
         f"Cas synthétiques sauvegardés : {len(synthetic_df)} lignes "
