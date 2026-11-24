@@ -1,5 +1,6 @@
 """Entraînement du modèle Isolation Forest sur les 4 mesures réseau (issue #10)."""
 
+import json
 from pathlib import Path
 import time
 
@@ -15,6 +16,7 @@ FEATURES = ["bytes_sent", "bytes_received", "packets", "elapsed_time_sec"]
 DATA_PATH = Path("data/log2.csv")
 ARTIFACTS_DIR = Path("artifacts")
 MODEL_PATH = ARTIFACTS_DIR / "model.joblib"
+METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
 SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
 SYNTHETIC_PER_TYPE = 50
 ALERT_RATE = 0.01
@@ -189,6 +191,46 @@ def save_model_artifact(
     return path
 
 
+def evaluate_detector(
+    test_scores: np.ndarray,
+    synthetic_scores: np.ndarray,
+    synthetic_types: pd.Series,
+    threshold: float,
+) -> dict[str, object]:
+    """Mesure les fausses alertes sur test allow et le rappel global/par type sur synthétiques."""
+    # Séparation stricte : test allow mesure les fausses alertes, les synthétiques le rappel.
+    test_alerts = predict_anomalies(test_scores, threshold)
+    synth_alerts = predict_anomalies(synthetic_scores, threshold)
+
+    recall_by_type: dict[str, float] = {}
+    for anomaly_type in pd.unique(synthetic_types):
+        mask = (synthetic_types == anomaly_type).to_numpy()
+        recall_by_type[str(anomaly_type)] = round(float(synth_alerts[mask].mean()), 6)
+
+    return {
+        "threshold": round(float(threshold), 6),
+        "false_alarm_rate": round(float(test_alerts.mean()), 6),
+        "false_alarms_count": int(test_alerts.sum()),
+        "test_size": int(len(test_alerts)),
+        "synthetic_recall": round(float(synth_alerts.mean()), 6),
+        "synthetic_detected": int(synth_alerts.sum()),
+        "synthetic_size": int(len(synth_alerts)),
+        "recall_by_type": recall_by_type,
+    }
+
+
+def save_metrics(
+    metrics: dict[str, object], path: Path = METRICS_PATH
+) -> Path:
+    """Écrit le résumé d'évaluation dans artifacts/metrics.json."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def main() -> None:
     """Charge les données, entraîne Isolation Forest et génère les cas synthétiques."""
     df = load_and_clean(DATA_PATH)
@@ -211,6 +253,35 @@ def main() -> None:
     )
     synthetic_path = save_synthetic_anomalies(synthetic_df, SYNTHETIC_PATH)
     model_path = save_model_artifact(pipeline, iforest_threshold, FEATURES, MODEL_PATH)
+
+    test_scores = compute_anomaly_scores(pipeline, test_df)
+    baseline_test_scores = compute_baseline_scores(test_df)
+    synth_scores = compute_anomaly_scores(pipeline, synthetic_df)
+    baseline_synth_scores = compute_baseline_scores(synthetic_df)
+
+    metrics = {
+        "alert_rate_target": ALERT_RATE,
+        "random_state": RANDOM_STATE,
+        "split_sizes": {
+            "train": len(train_df),
+            "validation": len(val_df),
+            "test": len(test_df),
+            "synthetic": len(synthetic_df),
+        },
+        "baseline": evaluate_detector(
+            baseline_test_scores,
+            baseline_synth_scores,
+            synthetic_df["type"],
+            baseline_threshold,
+        ),
+        "isolation_forest": evaluate_detector(
+            test_scores,
+            synth_scores,
+            synthetic_df["type"],
+            iforest_threshold,
+        ),
+    }
+    metrics_path = save_metrics(metrics, METRICS_PATH)
 
     print(
         f"Lignes allow : train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
@@ -247,6 +318,16 @@ def main() -> None:
         f"({synthetic_df['type'].nunique()} types) -> {synthetic_path}"
     )
     print(f"Modèle exporté : {model_path} (seuil={iforest_threshold:.4f})")
+    for name in ("baseline", "isolation_forest"):
+        res = metrics[name]
+        print(
+            f"Évaluation {name} : fausses alertes test = "
+            f"{res['false_alarm_rate'] * 100:.2f} % "
+            f"({res['false_alarms_count']}/{res['test_size']}) | "
+            f"rappel synthétiques = {res['synthetic_recall'] * 100:.2f} % "
+            f"({res['synthetic_detected']}/{res['synthetic_size']})"
+        )
+    print(f"Métriques exportées : {metrics_path}")
 
 
 if __name__ == "__main__":

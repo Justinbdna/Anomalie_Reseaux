@@ -1,0 +1,40 @@
+{
+  "alert_rate_target": 0.01,
+  "random_state": 42,
+  "split_sizes": {
+    "train": 22584,
+    "validation": 7528,
+    "test": 7528,
+    "synthetic": 200
+  },
+  "baseline": {
+    "threshold": 1163002.6,
+    "false_alarm_rate": 0.009431,
+    "false_alarms_count": 71,
+    "test_size": 7528,
+    "synthetic_recall": 0.5,
+    "synthetic_detected": 100,
+    "synthetic_size": 200,
+    "recall_by_type": {
+      "exfiltration": 1.0,
+      "flood": 0.0,
+      "connexion_fantome": 0.0,
+      "telechargement_massif": 1.0
+    }
+  },
+  "isolation_forest": {
+    "threshold": 0.673987,
+    "false_alarm_rate": 0.010096,
+    "false_alarms_count": 76,
+    "test_size": 7528,
+    "synthetic_recall": 0.75,
+    "synthetic_detected": 150,
+    "synthetic_size": 200,
+    "recall_by_type": {
+      "exfiltration": 1.0,
+      "flood": 1.0,
+      "connexion_fantome": 0.0,
+      "telechargement_massif": 1.0
+    }
+  }
+}
