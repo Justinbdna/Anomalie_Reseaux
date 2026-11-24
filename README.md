@@ -121,3 +121,20 @@ Le jeu `log2.csv` ne contenant pas d'étiquette « attaque », 200 lignes synth�
 - **`flood`** : rafale de centaines à milliers de paquets quasi vides concentrés en `0 s`, caractéristique d'une saturation ou d'un scan agressif.
 - **`connexion_fantome`** : session ouverte très longtemps (1 h à 4 h) avec un seul paquet échangé, typique d'une connexion maintenue anormalement en vie.
 - **`telechargement_massif`** : volume d'octets reçus anormalement élevé face à un trafic sortant minime, simulant un rapatriement massif non habituel.
+
+### Étude du taux d'alertes (0,5 %, 1 %, 2 %) et choix du seuil final
+Seuils calibrés exclusivement sur `val_df` (`7 528` lignes `allow`), puis évalués sur `test_df` (`7 528` lignes `allow`) et les `200` cas synthétiques :
+
+| Taux cible (val) | Détecteur | Seuil (val) | Fausses alertes (`test allow`) | Rappel global (synthétiques) | `exfiltration` | `flood` | `connexion_fantome` | `telechargement_massif` |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **0,5 %** | Baseline | `3 721 432,6` | `0,60 %` (`45`) | `50,00 %` (`100/200`) | `100 %` | `0 %` | `0 %` | `100 %` |
+| **0,5 %** | Isolation Forest | `0,7187` | `0,50 %` (`38`) | `25,00 %` (`50/200`) | `6 %` | `38 %` | `0 %` | `56 %` |
+| **1,0 % (retenu)** | Baseline | `1 163 002,6` | `0,94 %` (`71`) | `50,00 %` (`100/200`) | `100 %` | `0 %` | `0 %` | `100 %` |
+| **1,0 % (retenu)** | **Isolation Forest** | **`0,6740`** | **`1,01 %` (`76`)** | **`75,00 %` (`150/200`)** | **`100 %`** | **`100 %`** | **`0 %`** | **`100 %`** |
+| **2,0 %** | Baseline | `369 063,2` | `1,98 %` (`149`) | `50,00 %` (`100/200`) | `100 %` | `0 %` | `0 %` | `100 %` |
+| **2,0 %** | Isolation Forest | `0,6546` | `1,78 %` (`134`) | `78,00 %` (`156/200`) | `100 %` | `100 %` | `12 %` | `100 %` |
+
+**Taux final retenu : `1 %` (seuil Isolation Forest `0,6740`, exporté dans `artifacts/model.joblib`).**
+- À **`0,5 %`**, le seuil est trop strict : le rappel d'Isolation Forest chute à `25 %` (`6 %` seulement sur `exfiltration`, `38 %` sur `flood`).
+- À **`1 %`**, Isolation Forest bondit à **`75 %` de rappel** (`100 %` sur `exfiltration`, `flood` et `telechargement_massif`) tout en maintenant les fausses alertes autour de `1 %` (`76 / 7 528`), et surpasse nettement le baseline (bloqué à `50 %` quel que soit le taux).
+- À **`2 %`**, le gain de rappel est marginal (`+3` points, soit `+6` `connexion_fantome` détectées) au prix d'un quasi-doublement des fausses alertes (`76` → `134`).
