@@ -1,12 +1,12 @@
-"""Exploration et contrôle qualité des journaux pare-feu (P1 — Données).
+"""Exploration et contrôle qualité des journaux pare-feu (D2, D4).
 
 Exécuter avec :
     python explore.py
 
 Produit :
-- Un rapport complet sur la console (répartition des actions, nettoyage, doublons,
-  statistiques descriptives, ligne typique 'allow' pour la démo P3).
-- Le graphique de distribution du trafic normal : reports/trafic_allow.png
+- Un rapport complet sur la console (premier contrôle D2, audit nettoyage D3,
+  quantiles du trafic allow, ligne typique pour la démo).
+- Le graphique des volumes et durées du trafic autorisé : artifacts/trafic_allow.png
 """
 
 from __future__ import annotations
@@ -26,14 +26,15 @@ from features import (
     ACTION_COLUMN,
     ALLOW_ACTION,
     DATA_PATH,
-    FEATURE_COLUMNS,
-    FEATURE_TO_API,
-    clean_logs,
+    FEATURES,
+    audit_cleaning,
     find_typical_allow_row,
+    load_and_clean,
     load_raw_logs,
 )
 
-REPORT_PATH = Path("reports/trafic_allow.png")
+ARTIFACTS_DIR = Path("artifacts")
+TRAFFIC_ALLOW_PLOT = ARTIFACTS_DIR / "trafic_allow.png"
 
 
 def _format_log1p_tick(log_val: float, _pos: int) -> str:
@@ -58,12 +59,26 @@ def _format_int(val: float) -> str:
     return f"{round(val):,}".replace(",", " ")
 
 
+def first_control(path: Path = DATA_PATH) -> dict[str, object]:
+    """Premier contrôle (D2) : comptage par Action et vérification des valeurs manquantes."""
+    df_raw = load_raw_logs(path)
+    action_counts = df_raw[ACTION_COLUMN].value_counts(dropna=False).to_dict()
+    missing_by_col = {col: int(cnt) for col, cnt in df_raw.isna().sum().items()}
+    return {
+        "total_rows": len(df_raw),
+        "n_columns": int(df_raw.shape[1]),
+        "action_counts": {str(k): int(v) for k, v in action_counts.items()},
+        "missing_by_column": missing_by_col,
+        "total_missing": sum(missing_by_col.values()),
+    }
+
+
 def plot_allow_traffic(
     allow_df: pd.DataFrame,
     typical_row: pd.Series,
-    output_path: Path = REPORT_PATH,
+    output_path: Path = TRAFFIC_ALLOW_PLOT,
 ) -> Path:
-    """Génère le graphique 2x2 des distributions du trafic 'allow' en échelle log10(1+x)."""
+    """Génère le graphique 2x2 des distributions du trafic 'allow' en échelle log10(1+x) (D4)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     plt.rcParams.update(
@@ -78,10 +93,10 @@ def plot_allow_traffic(
     fig.patch.set_facecolor("#ffffff")
 
     feature_meta = [
-        ("Bytes Sent", "Octets envoyés (Bytes Sent)", "octets", "#2563eb"),
-        ("Bytes Received", "Octets reçus (Bytes Received)", "octets", "#0891b2"),
-        ("Packets", "Nombre de paquets (Packets)", "paquets", "#7c3aed"),
-        ("Elapsed Time (sec)", "Durée de session (Elapsed Time)", "s", "#059669"),
+        ("bytes_sent", "Octets envoyés (bytes_sent)", "octets", "#2563eb"),
+        ("bytes_received", "Octets reçus (bytes_received)", "octets", "#0891b2"),
+        ("packets", "Nombre de paquets (packets)", "paquets", "#7c3aed"),
+        ("elapsed_time_sec", "Durée de session (elapsed_time_sec)", "s", "#059669"),
     ]
 
     for ax, (col, title, unit, color) in zip(axes.flat, feature_meta):
@@ -111,7 +126,6 @@ def plot_allow_traffic(
             linewidth=0.35,
         )
 
-        # Zone interquartile Q25-Q75
         ax.axvspan(
             log_q25,
             log_q75,
@@ -120,8 +134,6 @@ def plot_allow_traffic(
             zorder=2,
             label=f"IQR (Q25–Q75) : {_format_int(q25)}–{_format_int(q75)}",
         )
-
-        # Ligne typique sélectionnée pour la démo P3 (tracée sous la médiane si confondues)
         ax.axvline(
             log_typ,
             color="#f59e0b",
@@ -131,8 +143,6 @@ def plot_allow_traffic(
             zorder=3,
             label=f"Cas typique démo : {_format_int(typical_val)} {unit}",
         )
-
-        # Médiane (au-dessus pour rester visible même lorsqu'elle coïncide avec le cas démo)
         ax.axvline(
             log_med,
             color="#0f172a",
@@ -141,8 +151,6 @@ def plot_allow_traffic(
             zorder=4,
             label=f"Médiane : {_format_int(median)} {unit}",
         )
-
-        # P99 (début de la queue extrême)
         ax.axvline(
             log_p99,
             color="#dc2626",
@@ -152,7 +160,6 @@ def plot_allow_traffic(
             label=f"P99 : {_format_int(p99)} {unit} (max : {_format_int(max_val)})",
         )
 
-        # Ticks propres aux puissances de 10 (0, 10, 100, 1k, 1M, 1G)
         max_exp = int(np.ceil(log_vals.max()))
         tick_raw = [0] + [10**e for e in range(1, max_exp + 1)]
         tick_pos = [np.log10(1.0 + v) for v in tick_raw]
@@ -177,7 +184,7 @@ def plot_allow_traffic(
         )
 
     fig.suptitle(
-        "Distribution du trafic autorisé (Action = allow) — 37 640 flux",
+        f"Distribution du trafic autorisé (Action = allow) — {_format_int(len(allow_df))} flux",
         fontsize=14.5,
         fontweight="bold",
         color="#0f172a",
@@ -187,13 +194,12 @@ def plot_allow_traffic(
         0.5,
         0.935,
         (
-            "Source : UCI Internet Firewall Data (data/log2.csv, 65 532 lignes au total)  •  "
+            "Source : UCI Internet Firewall Data (data/log2.csv, 65 532 lignes)  •  "
             f"Cas typique démo : ligne #{int(typical_row.name)} "
-            f"(port {int(typical_row['Destination Port'])}, "
-            f"{int(typical_row['Bytes Sent'])} B envoyés, "
-            f"{int(typical_row['Bytes Received'])} B reçus, "
-            f"{int(typical_row['Packets'])} paquets, "
-            f"{int(typical_row['Elapsed Time (sec)'])} s)"
+            f"({int(typical_row['bytes_sent'])} B envoyés, "
+            f"{int(typical_row['bytes_received'])} B reçus, "
+            f"{int(typical_row['packets'])} paquets, "
+            f"{int(typical_row['elapsed_time_sec'])} s)"
         ),
         ha="center",
         fontsize=9.3,
@@ -206,23 +212,8 @@ def plot_allow_traffic(
     return output_path
 
 
-def first_control(path: Path = DATA_PATH) -> dict[str, object]:
-    """Premier contrôle (D2) : comptage par Action et vérification des valeurs manquantes."""
-    df_raw = load_raw_logs(path)
-    action_counts = df_raw[ACTION_COLUMN].value_counts(dropna=False).to_dict()
-    missing_by_col = {col: int(cnt) for col, cnt in df_raw.isna().sum().items()}
-    return {
-        "total_rows": len(df_raw),
-        "n_columns": int(df_raw.shape[1]),
-        "action_counts": {str(k): int(v) for k, v in action_counts.items()},
-        "missing_by_column": missing_by_col,
-        "total_missing": sum(missing_by_col.values()),
-    }
-
-
 def run_exploration(path: Path = DATA_PATH) -> None:
     """Exécute le contrôle qualité complet et génère le graphique d'exploration."""
-    # 1. Premier contrôle (D2) : comptage des actions et absence de valeurs manquantes
     ctrl = first_control(path)
     print("=== 1. PREMIER CONTRÔLE (D2 — data/log2.csv) ===")
     print(f"Lignes totales : {ctrl['total_rows']:,} | Colonnes : {ctrl['n_columns']}")
@@ -231,60 +222,40 @@ def run_exploration(path: Path = DATA_PATH) -> None:
         print(f"  - {action:12s}: {count:6d} ({pct:5.2f} %)")
     print(f"Valeurs manquantes (NaN, sur les 12 colonnes) : {ctrl['total_missing']}")
 
-    # 2. Lecture brute (chaînes) pour détecter toute valeur illisible
-    df_str = pd.read_csv(path, dtype=str)
-    unreadable_counts: dict[str, int] = {}
-    for col in [c for c in df_str.columns if c != ACTION_COLUMN]:
-        bad = int(pd.to_numeric(df_str[col], errors="coerce").isna().sum())
-        unreadable_counts[col] = bad
+    audit = audit_cleaning(path)
+    print("\n=== 2. NETTOYAGE & QUALITÉ (D3) ===")
+    print(f"Valeurs manquantes (NaN)           : {audit['missing_total']}")
+    print(f"Valeurs numériques illisibles      : {audit['unreadable_total']}")
+    print(f"Valeurs négatives (< 0)            : {audit['negative_total']}")
+    print(f"Lignes conservées après nettoyage  : {audit['rows_clean']:,} / {audit['rows_raw']:,}")
+    print(
+        f"Doublons exacts (12 col., total)   : {audit['exact_duplicates_all_cols']:,} "
+        f"({100 * audit['exact_duplicates_all_cols'] / audit['rows_raw']:.2f} %)"
+    )
+    print(
+        f"Doublons exacts (12 col., allow)   : {audit['exact_duplicates_allow_all_cols']:,}"
+    )
+    print(
+        f"Doublons sur 4 mesures (allow)     : {audit['feature_duplicates_allow']:,} "
+        f"({audit['unique_feature_profiles_allow']:,} profils uniques)"
+    )
+    print("Décision doublons : CONSERVÉS (sessions distinctes sans horodatage ni IP).")
 
-    df_raw = load_raw_logs(path)
-    df_clean = clean_logs(df_raw)
+    df_clean = load_and_clean(path)
     allow_df = df_clean.loc[df_clean[ACTION_COLUMN] == ALLOW_ACTION].copy()
 
-    print("\n=== 2. NETTOYAGE & QUALITÉ ===")
-    total_unreadable = sum(unreadable_counts.values())
-    total_nulls = int(df_raw.isna().sum().sum())
-    numeric_cols = [c for c in df_raw.columns if c != ACTION_COLUMN]
-    neg_counts = {col: int((df_raw[col] < 0).sum()) for col in numeric_cols}
-    total_negatives = sum(neg_counts.values())
-    print(f"Valeurs manquantes (NaN)           : {total_nulls}")
-    print(f"Valeurs numériques illisibles      : {total_unreadable}")
-    print(f"Valeurs négatives (< 0)            : {total_negatives}")
-    print(f"Lignes conservées après nettoyage  : {len(df_clean):,} / {len(df_raw):,}")
-
-    exact_dups_all = int(df_raw.duplicated().sum())
-    exact_dups_allow = int(allow_df.duplicated().sum())
-    feat_dups_allow = int(allow_df.duplicated(subset=FEATURE_COLUMNS).sum())
-    unique_feat_allow = int(allow_df[FEATURE_COLUMNS].drop_duplicates().shape[0])
-    print(f"Doublons exacts (12 col., total)   : {exact_dups_all:,} ({100 * exact_dups_all / len(df_raw):.2f} %)")
-    print(f"Doublons exacts (12 col., allow)   : {exact_dups_allow:,} ({100 * exact_dups_allow / len(allow_df):.2f} %)")
-    print(
-        f"Doublons sur 4 mesures (allow)     : {feat_dups_allow:,} "
-        f"({100 * feat_dups_allow / len(allow_df):.2f} %, {unique_feat_allow:,} profils uniques)"
-    )
-    print("Décision doublons : CONSERVÉS (sessions distinctes sans timestamp/IP ; essentiel pour la densité normale).")
-
     print("\n=== 3. QUANTILES DU TRAFIC ALLOW (n = 37 640) ===")
-    quantiles = allow_df[FEATURE_COLUMNS].quantile([0.0, 0.25, 0.5, 0.75, 0.95, 0.99, 1.0])
+    quantiles = allow_df[FEATURES].quantile([0.0, 0.25, 0.5, 0.75, 0.95, 0.99, 1.0])
     print(quantiles.to_string())
 
     typical_row = find_typical_allow_row(allow_df)
-    payload = {
-        FEATURE_TO_API[col]: int(typical_row[col])
-        for col in FEATURE_COLUMNS
-    }
-    print("\n=== 4. LIGNE ALLOW TYPIQUE POUR LA DÉMO (P3) ===")
-    print(
-        f"Index pandas : {int(typical_row.name)} (ligne CSV {int(typical_row.name) + 2}) | "
-        f"Source Port={int(typical_row['Source Port'])}, "
-        f"Destination Port={int(typical_row['Destination Port'])}, Action={typical_row['Action']}"
-    )
-    print("Payload JSON prêt pour POST /predict :")
+    payload = {col: int(typical_row[col]) for col in FEATURES}
+    print("\n=== 4. LIGNE ALLOW TYPIQUE POUR LA DÉMO ===")
+    print(f"Index pandas : {int(typical_row.name)} (ligne CSV {int(typical_row.name) + 2})")
     print(json.dumps(payload, indent=2))
 
-    out_path = plot_allow_traffic(allow_df, typical_row, REPORT_PATH)
-    print(f"\n=== 5. GRAPHIQUE GÉNÉRÉ ===\n{out_path}")
+    out_path = plot_allow_traffic(allow_df, typical_row, TRAFFIC_ALLOW_PLOT)
+    print(f"\n=== 5. GRAPHIQUE GÉNÉRÉ (D4) ===\n{out_path}")
 
 
 if __name__ == "__main__":

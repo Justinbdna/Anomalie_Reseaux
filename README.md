@@ -64,7 +64,10 @@ Contrôle exécuté via `python explore.py` (`first_control()`) : **0 valeur man
 | `Packets` | 1 | 2 | **3** | 19 | 107 | 1 469 | 1 036 116 |
 | `Elapsed Time (sec)` | 0 | 27 | **30** | 49 | 360 | 1 201 | 10 824 |
 
-- **Visualisation** : `reports/trafic_allow.png` (générée par `python explore.py`, distributions en échelle `log10(1 + x)` avec IQR, médiane, P99 et repère du cas typique démo).
+- **Visualisation (D4)** : `artifacts/trafic_allow.png` (générée par `python explore.py`).
+  - **Ordres de grandeur** : la majorité du trafic `allow` correspond à de petits échanges rapides (médiane à `126` octets envoyés, `220` octets reçus, `3` paquets, `30 s` de durée, dominés par le DNS port 53 et le web HTTPS/HTTP).
+  - **Distributions très étalées (queue lourde)** : les volumes s'étendent sur 6 à 9 ordres de grandeur (jusqu'à `948 Mo` envoyés, `321 Mo` reçus, `1,04 M` paquets et `3 h` de session), d'où la nécessité d'une échelle logarithmique (`log10(1 + x)`) pour visualiser la distribution et de la transformation `log1p` avant Isolation Forest.
+  - **Valeurs extrêmes** : dès le `99e` percentile (`P99` : `64 722` octets envoyés, `1,23 Mo` reçus, `1 469` paquets, `1 201 s`), on entre dans des transferts massifs ou sessions longues qui représentent des candidats naturels aux anomalies de volume.
 
 ### Cas habituel de référence pour la démo (P3)
 Vraie ligne `allow` la plus proche de la médiane des 4 mesures (index pandas `12871`, ligne CSV `12873`, trafic DNS sur le port destination `53`) :
