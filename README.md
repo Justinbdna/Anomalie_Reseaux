@@ -93,6 +93,19 @@ Vraie ligne `allow` sélectionnée automatiquement comme la plus proche de la m�
   - Décision : **`is_anomaly = false`** avec une large marge, aussi bien au seuil `P99` (`0.6740`) qu'au seuil `P95` (`0.5945`).
 - **Usage équipe** : valeurs prêtes à pré-remplir dans le formulaire Streamlit (Nassima — A6) et dans le test d'un flux normal côté `pytest` (Quentin).
 
+### Comparaison trafic autorisé (`allow`) vs refusé (`deny` / `drop`) — Bonus (D7)
+Analyse réalisée sans jamais utiliser `deny` ni `drop` à l'entraînement (modèle Isolation Forest entraîné uniquement sur `allow` train). Graphique généré : `artifacts/comparaison_allow_deny_drop.png`.
+
+| Groupe | Lignes | Méd. `bytes_sent` | Méd. `bytes_received` | Méd. `packets` | Méd. `elapsed_time_sec` | Score moyen | Score médian | `> P95` (`0.5945`) | `> P99` (`0.6740`) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `allow` (test) | 7 528 | 126 | 220 | 3 | 30 s | **0.4418** | 0.4424 | 4,74 % | 1,01 % |
+| `deny` | 14 987 | 66 | **0** | **1** | **0 s** | **0.6168** | 0.6183 | **97,31 %** | 0,00 % |
+| `drop` | 12 851 | 70 | **0** | **1** | **0 s** | **0.5932** | 0.5851 | **33,12 %** | 0,00 % |
+| `deny + drop` | 27 838 | 66 | **0** | **1** | **0 s** | **0.6059** | 0.6096 | **67,68 %** | 0,00 % |
+
+- **Ce qui distingue `deny` / `drop`** : les connexions refusées sont coupées immédiatement par le pare-feu dès le premier paquet — leur profil médian est quasi figé à `0` octet reçu, `1` paquet et `0 s` de durée (contre `220` octets reçus, `3` paquets et `30 s` pour `allow`).
+- **Comportement du modèle non supervisé** : même sans jamais voir `deny`/`drop` à l'entraînement, Isolation Forest leur attribue un score moyen nettement supérieur au trafic normal (`0.6059` contre `0.4418`, soit `+0.164`), ce qui place **97,31 % des flux `deny`** (et **67,68 % de `deny + drop`**) au-dessus du seuil `P95` (`0.5945`), alors que le seuil `P99` (`0.6740`) cible plutôt les transferts `allow` à volumes extrêmes.
+
 ## Contrat commun (pour travailler en parallèle)
 - **Modèle exporté** : `artifacts/model.joblib`
 - **API FastAPI** :
