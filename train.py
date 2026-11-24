@@ -86,6 +86,12 @@ def compute_anomaly_scores(pipeline: Pipeline, df: pd.DataFrame) -> np.ndarray:
     return -pipeline.score_samples(df[FEATURES])
 
 
+def compute_baseline_scores(df: pd.DataFrame) -> np.ndarray:
+    """Calcule le score baseline (bytes_sent + bytes_received) : plus grand = plus atypique."""
+    # Volume total d'octets échangés comme référence simple face à Isolation Forest.
+    return (df["bytes_sent"] + df["bytes_received"]).to_numpy(dtype=float)
+
+
 def main() -> None:
     """Charge les données, entraîne Isolation Forest et affiche un aperçu des scores."""
     df = load_and_clean(DATA_PATH)
@@ -96,6 +102,7 @@ def main() -> None:
     elapsed = time.perf_counter() - start
 
     val_scores = compute_anomaly_scores(pipeline, val_df)
+    baseline_val_scores = compute_baseline_scores(val_df)
 
     print(
         f"Lignes allow : train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
@@ -107,6 +114,13 @@ def main() -> None:
         f"médiane={np.median(val_scores):.4f}, "
         f"p99={np.percentile(val_scores, 99):.4f}, "
         f"max={val_scores.max():.4f}"
+    )
+    print(
+        "Scores baseline validation (octets totaux) : "
+        f"min={baseline_val_scores.min():.1f}, "
+        f"médiane={np.median(baseline_val_scores):.1f}, "
+        f"p99={np.percentile(baseline_val_scores, 99):.1f}, "
+        f"max={baseline_val_scores.max():.1f}"
     )
 
 
