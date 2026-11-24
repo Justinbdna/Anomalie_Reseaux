@@ -76,8 +76,9 @@ Implémenté dans `features.py` via `split_allow(df, random_state=42, max_rows=5
 - **Test (20 %, évaluation finale jamais vue)** : **7 528** lignes `allow`
 - **Plafond d'échantillonnage** : `50 000` lignes (non déclenché ici car `37 640 <= 50 000`), zéro recouvrement, découpage 100 % reproductible (`random_state=42`).
 
-### Cas habituel de référence pour la démo (P3)
-Vraie ligne `allow` la plus proche de la médiane des 4 mesures (index pandas `12871`, ligne CSV `12873`, trafic DNS sur le port destination `53`) :
+### Cas habituel de référence pour la démo (D6 — à utiliser par Nassima & Quentin)
+Vraie ligne `allow` sélectionnée automatiquement comme la plus proche de la médiane des 4 mesures (`126`, `220`, `3`, `30`) : **index pandas `12871`** (ligne CSV `12873`, requête DNS classique sur le port destination `53`).
+
 ```json
 {
   "bytes_sent": 168,
@@ -86,6 +87,11 @@ Vraie ligne `allow` la plus proche de la médiane des 4 mesures (index pandas `1
   "elapsed_time_sec": 30
 }
 ```
+
+- **Vérification sur le modèle Isolation Forest (`train.py`, `log1p` + `n_estimators=200`, `random_state=42`)** :
+  - Score d'anomalie obtenu : **`0.4332`** (42,9e percentile de la validation, sous la médiane `0.4410`).
+  - Décision : **`is_anomaly = false`** avec une large marge, aussi bien au seuil `P99` (`0.6740`) qu'au seuil `P95` (`0.5945`).
+- **Usage équipe** : valeurs prêtes à pré-remplir dans le formulaire Streamlit (Nassima — A6) et dans le test d'un flux normal côté `pytest` (Quentin).
 
 ## Contrat commun (pour travailler en parallèle)
 - **Modèle exporté** : `artifacts/model.joblib`
