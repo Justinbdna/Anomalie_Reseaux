@@ -5,6 +5,11 @@ from pathlib import Path
 import time
 
 import joblib
+import matplotlib
+
+# Backend sans écran pour fonctionner en local, en CI et dans Docker.
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
@@ -17,6 +22,7 @@ DATA_PATH = Path("data/log2.csv")
 ARTIFACTS_DIR = Path("artifacts")
 MODEL_PATH = ARTIFACTS_DIR / "model.joblib"
 METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
+PLOT_PATH = ARTIFACTS_DIR / "scores_isolation_forest.png"
 SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
 SYNTHETIC_PER_TYPE = 50
 ALERT_RATE = 0.01
@@ -250,6 +256,56 @@ def save_metrics(
     return path
 
 
+def save_scores_histogram(
+    val_scores: np.ndarray,
+    synthetic_scores: np.ndarray,
+    threshold: float,
+    path: Path = PLOT_PATH,
+) -> Path:
+    """Trace l'histogramme validation allow vs cas synthétiques avec la ligne de seuil."""
+    # density=True normalise les deux groupes (7 528 vs 200 lignes) sur la même échelle.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    bins = np.linspace(
+        min(float(val_scores.min()), float(synthetic_scores.min())),
+        max(float(val_scores.max()), float(synthetic_scores.max())),
+        40,
+    )
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.hist(
+        val_scores,
+        bins=bins,
+        density=True,
+        alpha=0.6,
+        color="#2b6cb0",
+        label=f"Validation allow (n={len(val_scores)})",
+    )
+    ax.hist(
+        synthetic_scores,
+        bins=bins,
+        density=True,
+        alpha=0.6,
+        color="#e53e3e",
+        label=f"Cas synthétiques (n={len(synthetic_scores)})",
+    )
+    ax.axvline(
+        threshold,
+        color="#1a202c",
+        linestyle="--",
+        linewidth=2,
+        label=f"Seuil 1 % ({threshold:.4f})",
+    )
+    ax.set_title("Scores Isolation Forest : validation allow vs cas synthétiques")
+    ax.set_xlabel("Score d'anomalie (-score_samples)")
+    ax.set_ylabel("Densité")
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
 def main() -> None:
     """Charge les données, entraîne Isolation Forest et génère les cas synthétiques."""
     df = load_and_clean(DATA_PATH)
@@ -317,6 +373,9 @@ def main() -> None:
         },
     }
     metrics_path = save_metrics(metrics, METRICS_PATH)
+    plot_path = save_scores_histogram(
+        val_scores, synth_scores, iforest_threshold, PLOT_PATH
+    )
 
     print(
         f"Lignes allow : train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
@@ -374,6 +433,7 @@ def main() -> None:
             f"rappel={iso['synthetic_recall'] * 100:.2f}%"
         )
     print(f"Métriques exportées : {metrics_path}")
+    print(f"Graphique exporté : {plot_path}")
 
 
 if __name__ == "__main__":

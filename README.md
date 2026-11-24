@@ -138,3 +138,9 @@ Seuils calibrés exclusivement sur `val_df` (`7 528` lignes `allow`), puis éval
 - À **`0,5 %`**, le seuil est trop strict : le rappel d'Isolation Forest chute à `25 %` (`6 %` seulement sur `exfiltration`, `38 %` sur `flood`).
 - À **`1 %`**, Isolation Forest bondit à **`75 %` de rappel** (`100 %` sur `exfiltration`, `flood` et `telechargement_massif`) tout en maintenant les fausses alertes autour de `1 %` (`76 / 7 528`), et surpasse nettement le baseline (bloqué à `50 %` quel que soit le taux).
 - À **`2 %`**, le gain de rappel est marginal (`+3` points, soit `+6` `connexion_fantome` détectées) au prix d'un quasi-doublement des fausses alertes (`76` → `134`).
+
+### Distribution des scores Isolation Forest (`artifacts/scores_isolation_forest.png`)
+![Distribution des scores Isolation Forest](artifacts/scores_isolation_forest.png)
+
+- **Trafic habituel (`validation allow`)** : concentré autour de la médiane (`0,4410`), avec seulement `1,01 %` des observations au-dessus du seuil `0,6740`.
+- **Cas synthétiques** : nettement décalés à droite du seuil pour `exfiltration`, `flood` et `telechargement_massif` (`100 %` détectés), tandis que `connexion_fantome` reste sous le seuil (`0 %`), ce qui illustre visuellement la séparation et la principale limite du modèle.
