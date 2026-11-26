@@ -181,3 +181,38 @@ Seuils calibrés exclusivement sur `val_df` (`7 528` lignes `allow`), puis éval
 4. **Absence de contexte réseau** : le modèle n'utilise ni ports, ni adresses IP, ni horodatage ; il évalue chaque session isolément sans détecter d'attaques distribuées ou répétées dans le temps.
 
 > **Limite choisie pour la soutenance :** *« `allow` n'est pas une vérité terrain et le rappel repose sur des cas synthétiques »* — le pare-feu fournit une référence de trafic habituel (pas des attaques étiquetées), et nos `75 %` de rappel mesurent la détection de profils construits par l'équipe, illustré concrètement par les `connexion_fantome` ratées lorsque seule la durée est extrême.
+
+## Démo avec Docker Compose (#32)
+
+Prérequis : Docker Desktop démarré (conteneurs Linux), ports 8000 et 8501 libres.
+Télécharger le CSV UCI comme indiqué dans la section données ci-dessus et placer
+`log2.csv` dans `data/` avant la construction. Il reste non versionné.
+
+```sh
+docker compose up --build -d --wait
+```
+
+Le Dockerfile entraîne le modèle pendant la construction avec `python train.py`.
+Le modèle généré est intégré à l'image ; aucun environnement Python local n'est nécessaire.
+Streamlit utilise `API_URL=http://api:8000` et attend que `/health` confirme
+`model_loaded: true` avant de démarrer.
+
+- Interface : http://localhost:8501
+- État API : http://localhost:8000/health
+- Documentation API : http://localhost:8000/docs
+
+Dans l'interface, cliquer sur **Cas habituel**, puis **Analyser** : score attendu
+proche de **0,433**, avec **Trafic habituel**. Vérifier aussi le cas synthétique
+(exfiltration), qui doit déclencher une alerte.
+
+```sh
+# Tests dans l'image
+docker compose run --rm --no-deps api pytest -q -p no:cacheprovider
+# Diagnostic
+docker compose logs api app
+# Arrêt
+docker compose down
+```
+
+Pour valider #32, refaire la construction et les deux cas de démo sur une deuxième
+machine ; noter les résultats dans la PR avant de clôturer l'issue.
