@@ -84,6 +84,29 @@ def test_predict_refuse_bytes_received_negatif(client):
     assert reponse.status_code == 422
 
 
+def test_predict_refuse_packets_negatif(client):
+    ligne = {**LIGNE_VALIDE, "packets": -3}
+
+    reponse = client.post("/predict", json=ligne)
+
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"] == [
+        {"field": "packets", "message": "Nombre de paquets ne peut pas être négatif."}
+    ]
+
+
+def test_predict_refuse_duree_negative(client):
+    ligne = {**LIGNE_VALIDE, "elapsed_time_sec": -5}
+
+    reponse = client.post("/predict", json=ligne)
+
+    assert reponse.status_code == 422
+    # "Durée" est au féminin : le message dit "négative".
+    assert reponse.json()["detail"] == [
+        {"field": "elapsed_time_sec", "message": "Durée ne peut pas être négative."}
+    ]
+
+
 def test_erreur_octets_negatifs_message_en_francais(client):
     ligne = {**LIGNE_VALIDE, "bytes_sent": -1}
 
