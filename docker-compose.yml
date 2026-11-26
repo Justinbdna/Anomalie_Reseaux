@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .
+    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; r = json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=5)); assert r['status'] == 'ok' and r['model_loaded'] is True"
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  app:
+    build: .
+    command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--browser.gatherUsageStats", "false"]
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
