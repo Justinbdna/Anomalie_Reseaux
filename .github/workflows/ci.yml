@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging, quentin]
+  pull_request:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: python -m pip install -r requirements.txt
+
+      - name: Exécuter les tests
+        run: python -m pytest -v
+
+  docker:
+    name: Build Docker Compose
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      # Le jeu UCI est volontairement ignoré par Git, mais Dockerfile entraîne
+      # le modèle pendant le build et a donc besoin de ce fichier.
+      - name: Télécharger le jeu UCI pour le build Docker
+        shell: bash
+        run: |
+          mkdir -p data
+          curl --fail --location --retry 3 \
+            'https://archive.ics.uci.edu/static/public/542/internet+firewall+data.zip' \
+            --output /tmp/firewall.zip
+          unzip -o /tmp/firewall.zip 'log2.csv' -d data
+          test -f data/log2.csv
+
+      - name: Vérifier la configuration Compose
+        run: docker compose config --quiet
+
+      - name: Construire les images
+        run: docker compose build
+
+      - name: Démarrer les services et vérifier la santé
+        run: docker compose up --detach --wait
+
+      - name: Vérifier l’API
+        run: |
+          curl --fail http://localhost:8000/health
+          curl --fail http://localhost:8501/ > /dev/null
+
+      - name: Arrêter les services
+        if: always()
+        run: docker compose down
