@@ -34,6 +34,16 @@ services:
     # Dans Docker, l'API s'appelle "api" (nom du service) et non "localhost".
     environment:
       API_URL: http://api:8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8501/', timeout=5)"
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
     # Streamlit ne démarre qu'une fois l'API "healthy" (modèle chargé).
     depends_on:
       api:
