@@ -8,8 +8,10 @@ Pour lancer en local (l'API doit tourner dans un autre terminal) :
     streamlit run app.py
 """
 
+# os : lire la variable d'environnement API_URL.
 import os
 
+# requests : envoyer des requêtes HTTP à l'API. streamlit : construire la page web.
 import requests
 import streamlit as st
 
@@ -43,12 +45,14 @@ CAS_SYNTHETIQUE = {
 
 def pre_remplir(cas):
     """Met les valeurs d'un cas dans le formulaire (via st.session_state)."""
+    # st.session_state : la "mémoire" de la page. Chaque champ du formulaire y a une case à son nom.
     for champ, valeur in cas.items():
         st.session_state[champ] = float(valeur)
 
 
 def afficher_resultat(reponse):
     """Affiche la réponse de l'API selon son code HTTP."""
+    # 200 = tout va bien : on affiche le score, puis un bandeau rouge (alerte) ou vert (normal).
     if reponse.status_code == 200:
         resultat = reponse.json()
         st.metric("Score d'anomalie", f"{resultat['score']:.3f}")
@@ -57,6 +61,7 @@ def afficher_resultat(reponse):
         else:
             st.success("✅ Trafic habituel : pas d'alerte")
 
+    # 422 = saisie invalide : on affiche chaque message, un par ligne.
     elif reponse.status_code == 422:
         # Messages en français renvoyés par l'API (issue #20).
         st.warning("Saisie à corriger :")
@@ -67,12 +72,15 @@ def afficher_resultat(reponse):
         # Le modèle n'est pas chargé côté API.
         st.error(reponse.json()["detail"])
 
+    # Tout autre code : erreur générique.
     else:
         st.error(f"Erreur inattendue de l'API (code {reponse.status_code}).")
 
 
 # ---------------------------------------------------------------- Page
+# Streamlit relit tout le fichier de haut en bas à chaque clic : la page est redessinée à chaque fois.
 
+# Titre de l'onglet du navigateur, titre de la page et phrase d'explication.
 st.set_page_config(page_title="Anomalie Réseaux", page_icon="🛡️")
 st.title("🛡️ Anomalie Réseaux")
 st.write(
@@ -82,12 +90,14 @@ st.write(
 )
 
 # Valeurs de départ du formulaire : le cas habituel.
+# setdefault : n'écrit la valeur que si elle n'existe pas encore (on n'écrase pas une saisie).
 for champ, valeur in CAS_HABITUEL.items():
     st.session_state.setdefault(champ, float(valeur))
 
 # Boutons de pré-remplissage (issue #22).
 # on_click s'exécute AVANT l'affichage du formulaire : c'est ce qui permet
 # de changer les valeurs des champs.
+# Deux colonnes côte à côte, un bouton dans chacune ; args = le cas à envoyer à pre_remplir().
 col1, col2 = st.columns(2)
 col1.button(
     "Cas habituel", on_click=pre_remplir, args=(CAS_HABITUEL,), use_container_width=True
@@ -101,6 +111,8 @@ col2.button(
 
 # Formulaire (issue #21). Pas de min_value=0 : c'est l'API qui contrôle
 # les valeurs et renvoie un message clair si une valeur est négative.
+# Une case numérique par champ ; key=champ relie la case à st.session_state[champ].
+# envoye vaut True uniquement au moment où on clique sur "Analyser".
 with st.form("ligne_de_journal"):
     for champ, libelle in CHAMPS.items():
         st.number_input(libelle, key=champ, step=1.0)
@@ -108,13 +120,17 @@ with st.form("ligne_de_journal"):
 
 # Appel de l'API et affichage du résultat (issue #23).
 if envoye:
+    # On rassemble les 4 valeurs saisies dans un dictionnaire (envoyé en JSON).
     ligne = {champ: st.session_state[champ] for champ in CHAMPS}
     try:
+        # Appel de POST /predict ; timeout=5 : on n'attend pas plus de 5 secondes.
         reponse = requests.post(f"{API_URL}/predict", json=ligne, timeout=5)
     except requests.exceptions.RequestException:
+        # L'API est éteinte ou injoignable : message clair au lieu d'un plantage.
         st.error(
             f"L'API ne répond pas ({API_URL}). "
             "Vérifiez qu'elle est lancée : uvicorn api:app --reload"
         )
     else:
+        # L'API a répondu (quel que soit le code) : on affiche le résultat.
         afficher_resultat(reponse)

@@ -1,3 +1,6 @@
+# Fichiers et dossiers que Docker NE copie PAS dans l'image (image plus légère et plus sûre).
+
+# Git, environnements virtuels Python et fichiers compilés / caches.
 .git
 .venv*
 venv
@@ -6,14 +9,18 @@ venv
 .pytest_cache
 .mypy_cache
 .ruff_cache
+# Archives et fichiers de secrets (.env), sauf le modèle d'exemple .env.example.
 data/*.zip
 .env
 .env.*
 !.env.example
 .ipynb_checkpoints
+# Documents locaux, non utiles dans l'image.
 docs_cours
 CLAUDE.local.md
+# artifacts/ est ignoré : le modèle est réentraîné dans l'image par "RUN python train.py".
 artifacts
 *.zip
+# Dans data/, on ignore tout SAUF log2.csv (le "!" fait une exception).
 data/*
 !data/log2.csv

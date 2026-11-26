@@ -12,11 +12,14 @@ Produit :
   - artifacts/comparaison_allow_deny_drop.png (D7)
 """
 
+# Permet d'écrire les types modernes (ex. "dict[str, object]") sur toutes les versions de Python.
 from __future__ import annotations
 
+# json : afficher joliment un dictionnaire. Path : chemins de fichiers.
 import json
 from pathlib import Path
 
+# matplotlib (graphiques), numpy (calcul), pandas (tableaux), et les outils scikit-learn du modèle.
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -24,11 +27,14 @@ from sklearn.ensemble import IsolationForest
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
+# "Agg" : dessiner les graphiques dans des fichiers, sans ouvrir de fenêtre (marche aussi dans Docker).
 matplotlib.use("Agg")
+# pyplot : dessiner. GridSpec : grille de sous-graphiques. FuncFormatter : formater les graduations des axes.
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import FuncFormatter
 
+# On réutilise les constantes et fonctions de nettoyage de features.py (même logique partout).
 from features import (
     ACTION_COLUMN,
     ALLOW_ACTION,
@@ -43,6 +49,7 @@ from features import (
     split_allow,
 )
 
+# Dossier et noms des 2 images produites par ce script.
 ARTIFACTS_DIR = Path("artifacts")
 TRAFFIC_ALLOW_PLOT = ARTIFACTS_DIR / "trafic_allow.png"
 COMPARISON_PLOT = ARTIFACTS_DIR / "comparaison_allow_deny_drop.png"
@@ -50,31 +57,39 @@ COMPARISON_PLOT = ARTIFACTS_DIR / "comparaison_allow_deny_drop.png"
 
 def _format_log1p_tick(log_val: float, _pos: int) -> str:
     """Formate un tick en échelle log10(1 + x) de façon lisible (0, 10, 1k, 1M, 1G)."""
+    # On revient de l'échelle log à la vraie valeur : x = 10^log - 1.
     raw = round((10**log_val) - 1)
+    # Petites valeurs : affichées telles quelles.
     if raw <= 0:
         return "0"
     if raw < 1_000:
         return f"{raw}"
+    # Milliers -> "k".
     if raw < 1_000_000:
         val = raw / 1_000
         return f"{val:.0f}k" if val >= 10 or abs(val - round(val)) < 0.05 else f"{val:.1f}k"
+    # Millions -> "M".
     if raw < 1_000_000_000:
         val = raw / 1_000_000
         return f"{val:.0f}M" if val >= 10 or abs(val - round(val)) < 0.05 else f"{val:.1f}M"
+    # Milliards -> "G".
     val = raw / 1_000_000_000
     return f"{val:.0f}G" if val >= 10 or abs(val - round(val)) < 0.05 else f"{val:.1f}G"
 
 
 def _format_int(val: float) -> str:
     """Formate un nombre arrondi à l'entier avec espace comme séparateur de milliers."""
+    # Ex. 37640 -> "37 640" (format français).
     return f"{round(val):,}".replace(",", " ")
 
 
 def first_control(path: Path = DATA_PATH) -> dict[str, object]:
     """Premier contrôle (D2) : comptage par Action et vérification des valeurs manquantes."""
+    # Lecture du CSV brut, nombre de lignes par Action (allow, deny, drop...) et valeurs manquantes par colonne.
     df_raw = load_raw_logs(path)
     action_counts = df_raw[ACTION_COLUMN].value_counts(dropna=False).to_dict()
     missing_by_col = {col: int(cnt) for col, cnt in df_raw.isna().sum().items()}
+    # Résumé renvoyé sous forme de dictionnaire.
     return {
         "total_rows": len(df_raw),
         "n_columns": int(df_raw.shape[1]),
@@ -86,6 +101,7 @@ def first_control(path: Path = DATA_PATH) -> dict[str, object]:
 
 def _fit_reference_model(train_df: pd.DataFrame) -> Pipeline:
     """Entraîne le pipeline Isolation Forest de référence (identique à train.py)."""
+    # Même pipeline que train.py : log1p puis Isolation Forest à 200 arbres, graine 42.
     pipeline = Pipeline(
         steps=[
             ("log1p", FunctionTransformer(np.log1p)),
@@ -95,6 +111,7 @@ def _fit_reference_model(train_df: pd.DataFrame) -> Pipeline:
             ),
         ]
     )
+    # Entraînement sur les 4 mesures des lignes allow d'entraînement.
     pipeline.fit(train_df[FEATURES])
     return pipeline
 
@@ -105,8 +122,10 @@ def plot_allow_traffic(
     output_path: Path = TRAFFIC_ALLOW_PLOT,
 ) -> Path:
     """Génère le graphique 2x2 des distributions du trafic 'allow' en échelle log10(1+x) (D4)."""
+    # Crée le dossier artifacts/ s'il n'existe pas.
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Style général des graphiques (police, couleur et épaisseur des bordures).
     plt.rcParams.update(
         {
             "font.family": "DejaVu Sans",
@@ -115,9 +134,11 @@ def plot_allow_traffic(
         }
     )
 
+    # Une figure avec 4 cases (2 lignes x 2 colonnes), fond blanc.
     fig, axes = plt.subplots(2, 2, figsize=(13.5, 8.8), dpi=180)
     fig.patch.set_facecolor("#ffffff")
 
+    # Pour chaque mesure : nom de colonne, titre, unité et couleur de son graphique.
     feature_meta = [
         ("bytes_sent", "Octets envoyés (bytes_sent)", "octets", "#2563eb"),
         ("bytes_received", "Octets reçus (bytes_received)", "octets", "#0891b2"),
@@ -125,10 +146,13 @@ def plot_allow_traffic(
         ("elapsed_time_sec", "Durée de session (elapsed_time_sec)", "s", "#059669"),
     ]
 
+    # Une case par mesure : on dessine l'histogramme et les repères.
     for ax, (col, title, unit, color) in zip(axes.flat, feature_meta):
+        # Échelle log10(1 + x) : sinon quelques valeurs énormes écraseraient tout le graphique.
         series = allow_df[col].astype(float)
         log_vals = np.log10(1.0 + series)
 
+        # Statistiques utiles : quartiles, médiane, 99e percentile, maximum et valeur du cas typique.
         q25 = float(series.quantile(0.25))
         median = float(series.median())
         q75 = float(series.quantile(0.75))
@@ -136,12 +160,14 @@ def plot_allow_traffic(
         max_val = float(series.max())
         typical_val = float(typical_row[col])
 
+        # Les mêmes valeurs converties en échelle log, pour les placer sur l'axe.
         log_q25 = np.log10(1.0 + q25)
         log_med = np.log10(1.0 + median)
         log_q75 = np.log10(1.0 + q75)
         log_p99 = np.log10(1.0 + p99)
         log_typ = np.log10(1.0 + typical_val)
 
+        # Histogramme : combien de flux pour chaque tranche de valeurs (48 barres).
         ax.set_facecolor("#f8fafc")
         ax.hist(
             log_vals,
@@ -152,6 +178,7 @@ def plot_allow_traffic(
             linewidth=0.35,
         )
 
+        # Bande colorée : la moitié centrale des valeurs (entre le 1er et le 3e quartile).
         ax.axvspan(
             log_q25,
             log_q75,
@@ -160,6 +187,7 @@ def plot_allow_traffic(
             zorder=2,
             label=f"IQR (Q25–Q75) : {_format_int(q25)}–{_format_int(q75)}",
         )
+        # Trait orange : la valeur du cas typique utilisé pour la démo.
         ax.axvline(
             log_typ,
             color="#f59e0b",
@@ -169,6 +197,7 @@ def plot_allow_traffic(
             zorder=3,
             label=f"Cas typique démo : {_format_int(typical_val)} {unit}",
         )
+        # Tirets noirs : la médiane.
         ax.axvline(
             log_med,
             color="#0f172a",
@@ -177,6 +206,7 @@ def plot_allow_traffic(
             zorder=4,
             label=f"Médiane : {_format_int(median)} {unit}",
         )
+        # Pointillés rouges : le 99e percentile (99 % des valeurs sont en dessous).
         ax.axvline(
             log_p99,
             color="#dc2626",
@@ -186,6 +216,7 @@ def plot_allow_traffic(
             label=f"P99 : {_format_int(p99)} {unit} (max : {_format_int(max_val)})",
         )
 
+        # Graduations de l'axe X : 0, 10, 100, 1k, ... affichées avec des noms lisibles.
         max_exp = int(np.ceil(log_vals.max()))
         tick_raw = [0] + [10**e for e in range(1, max_exp + 1)]
         tick_pos = [np.log10(1.0 + v) for v in tick_raw]
@@ -193,6 +224,7 @@ def plot_allow_traffic(
         ax.xaxis.set_major_formatter(FuncFormatter(_format_log1p_tick))
         ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: _format_int(y)))
 
+        # Titre, noms des axes, grille, suppression des bordures haut/droite, légende.
         ax.set_title(title, fontsize=11.5, fontweight="bold", color="#0f172a", pad=8)
         ax.set_xlabel(f"Valeur ({unit}, échelle log10(1 + x))", fontsize=9.5, color="#334155")
         ax.set_ylabel("Nombre de flux", fontsize=9.5, color="#334155")
@@ -209,6 +241,7 @@ def plot_allow_traffic(
             framealpha=0.94,
         )
 
+    # Grand titre de la figure.
     fig.suptitle(
         f"Distribution du trafic autorisé (Action = allow) — {_format_int(len(allow_df))} flux",
         fontsize=14.5,
@@ -216,6 +249,7 @@ def plot_allow_traffic(
         color="#0f172a",
         y=0.975,
     )
+    # Sous-titre : la source des données et les valeurs du cas typique.
     fig.text(
         0.5,
         0.935,
@@ -232,6 +266,7 @@ def plot_allow_traffic(
         color="#475569",
     )
 
+    # Mise en page, enregistrement de l'image puis fermeture de la figure (libère la mémoire).
     fig.tight_layout(rect=(0.0, 0.01, 1.0, 0.91))
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
@@ -246,16 +281,20 @@ def compare_allow_vs_refused(
     output_path: Path = COMPARISON_PLOT,
 ) -> dict[str, dict[str, float]]:
     """Compare allow vs deny/drop sur les 4 mesures et sur les scores du modèle (D7)."""
+    # Crée le dossier artifacts/ s'il n'existe pas.
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # On sépare les lignes selon la décision du pare-feu : autorisé, refusé (deny), jeté (drop), refusé total.
     allow_df = df_clean.loc[df_clean[ACTION_COLUMN] == ALLOW_ACTION]
     deny_df = df_clean.loc[df_clean[ACTION_COLUMN] == "deny"]
     drop_df = df_clean.loc[df_clean[ACTION_COLUMN] == "drop"]
     refused_df = df_clean.loc[df_clean[ACTION_COLUMN].isin(["deny", "drop"])]
 
+    # Deux seuils de référence calculés sur la validation : 95e et 99e percentiles des scores.
     p95 = float(np.percentile(val_scores, 95))
     p99 = float(np.percentile(val_scores, 99))
 
+    # Score d'anomalie de chaque groupe (signe inversé : plus grand = plus atypique).
     scores = {
         "allow_test": -pipeline.score_samples(test_df[FEATURES]),
         "deny": -pipeline.score_samples(deny_df[FEATURES]),
@@ -263,6 +302,7 @@ def compare_allow_vs_refused(
         "deny_drop": -pipeline.score_samples(refused_df[FEATURES]),
     }
 
+    # Pour chaque groupe : nombre de lignes, moyenne, médiane et % de lignes au-dessus des seuils.
     summary: dict[str, dict[str, float]] = {}
     for key, arr in scores.items():
         summary[key] = {
@@ -273,6 +313,7 @@ def compare_allow_vs_refused(
             "pct_above_p99": float((arr > p99).mean() * 100.0),
         }
 
+    # Style général des graphiques.
     plt.rcParams.update(
         {
             "font.family": "DejaVu Sans",
@@ -281,10 +322,12 @@ def compare_allow_vs_refused(
         }
     )
 
+    # Grille de 3 lignes x 2 colonnes : 4 cases pour les mesures, la dernière ligne entière pour les scores.
     fig = plt.figure(figsize=(14.0, 10.6), dpi=180)
     fig.patch.set_facecolor("#ffffff")
     gs = GridSpec(3, 2, figure=fig, height_ratios=[1.0, 1.0, 1.15], hspace=0.42, wspace=0.22)
 
+    # Pour chaque mesure : nom de colonne, titre et unité.
     feature_meta = [
         ("bytes_sent", "Octets envoyés (bytes_sent)", "octets"),
         ("bytes_received", "Octets reçus (bytes_received)", "octets"),
@@ -292,15 +335,18 @@ def compare_allow_vs_refused(
         ("elapsed_time_sec", "Durée de session (elapsed_time_sec)", "s"),
     ]
 
+    # Une case par mesure : idx // 2 donne la ligne, idx % 2 la colonne.
     for idx, (col, title, unit) in enumerate(feature_meta):
         ax = fig.add_subplot(gs[idx // 2, idx % 2])
         ax.set_facecolor("#f8fafc")
 
+        # Valeurs en échelle log pour allow et pour refusé, avec les mêmes 42 tranches pour comparer.
         allow_log = np.log10(1.0 + allow_df[col].astype(float))
         refused_log = np.log10(1.0 + refused_df[col].astype(float))
         upper = max(float(allow_log.max()), float(refused_log.max()))
         bins = np.linspace(0.0, upper, 42)
 
+        # Histogramme bleu : trafic autorisé. density=True compare des groupes de tailles différentes.
         ax.hist(
             allow_log,
             bins=bins,
@@ -311,6 +357,7 @@ def compare_allow_vs_refused(
             linewidth=0.3,
             label=f"allow (n={_format_int(len(allow_df))}, méd. {_format_int(allow_df[col].median())})",
         )
+        # Histogramme rouge : trafic refusé (deny + drop).
         ax.hist(
             refused_log,
             bins=bins,
@@ -325,6 +372,7 @@ def compare_allow_vs_refused(
             ),
         )
 
+        # Graduations lisibles (0, 10, 1k...), titres, grille et légende.
         max_exp = int(np.ceil(upper))
         tick_raw = [0] + [10**e for e in range(1, max_exp + 1)]
         ax.set_xticks([np.log10(1.0 + v) for v in tick_raw])
@@ -349,11 +397,13 @@ def compare_allow_vs_refused(
     ax_score = fig.add_subplot(gs[2, :])
     ax_score.set_facecolor("#f8fafc")
 
+    # 55 tranches communes entre le plus petit et le plus grand score.
     score_bins = np.linspace(
         min(scores["allow_test"].min(), scores["deny_drop"].min()),
         max(scores["allow_test"].max(), scores["deny_drop"].max()),
         55,
     )
+    # Scores du trafic autorisé (jeu de test) en bleu.
     ax_score.hist(
         scores["allow_test"],
         bins=score_bins,
@@ -367,6 +417,7 @@ def compare_allow_vs_refused(
             f"moy. = {summary['allow_test']['mean']:.4f}"
         ),
     )
+    # Scores du trafic "deny" en rouge.
     ax_score.hist(
         scores["deny"],
         bins=score_bins,
@@ -381,6 +432,7 @@ def compare_allow_vs_refused(
             f"({summary['deny']['pct_above_p95']:.1f} % > P95)"
         ),
     )
+    # Scores du trafic "drop" en orange.
     ax_score.hist(
         scores["drop"],
         bins=score_bins,
@@ -396,6 +448,7 @@ def compare_allow_vs_refused(
         ),
     )
 
+    # Lignes verticales des deux seuils (P95 en violet, P99 en noir).
     ax_score.axvline(
         p95,
         color="#7c3aed",
@@ -411,6 +464,7 @@ def compare_allow_vs_refused(
         label=f"Seuil validation P99 = {p99:.4f}",
     )
 
+    # Titre, axes, grille et légende du panneau des scores.
     ax_score.set_title(
         "Scores d'anomalie Isolation Forest (-score_samples) — entraîné uniquement sur allow",
         fontsize=11.5,
@@ -433,6 +487,7 @@ def compare_allow_vs_refused(
         framealpha=0.95,
     )
 
+    # Grand titre de la figure.
     fig.suptitle(
         "Comparaison trafic autorisé (allow) vs trafic refusé (deny / drop) — Bonus D7",
         fontsize=14.5,
@@ -440,6 +495,7 @@ def compare_allow_vs_refused(
         color="#0f172a",
         y=0.98,
     )
+    # Sous-titre : explication et scores moyens des deux groupes.
     fig.text(
         0.5,
         0.946,
@@ -453,6 +509,7 @@ def compare_allow_vs_refused(
         color="#475569",
     )
 
+    # Marges, enregistrement de l'image, fermeture de la figure, puis renvoi du résumé chiffré.
     fig.subplots_adjust(top=0.90, bottom=0.06, left=0.06, right=0.98)
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
@@ -461,6 +518,7 @@ def compare_allow_vs_refused(
 
 def run_exploration(path: Path = DATA_PATH) -> None:
     """Exécute le contrôle qualité complet et génère les graphiques dans artifacts/."""
+    # 1. Premier contrôle : nombre de lignes, de colonnes, répartition par Action (avec %), valeurs manquantes.
     ctrl = first_control(path)
     print("=== 1. PREMIER CONTRÔLE (D2 — data/log2.csv) ===")
     print(f"Lignes totales : {ctrl['total_rows']:,} | Colonnes : {ctrl['n_columns']}")
@@ -469,6 +527,7 @@ def run_exploration(path: Path = DATA_PATH) -> None:
         print(f"  - {action:12s}: {count:6d} ({pct:5.2f} %)")
     print(f"Valeurs manquantes (NaN, sur les 12 colonnes) : {ctrl['total_missing']}")
 
+    # 2. Audit du nettoyage : manquants, illisibles, négatifs, lignes gardées et doublons.
     audit = audit_cleaning(path)
     print("\n=== 2. NETTOYAGE & QUALITÉ (D3) ===")
     print(f"Valeurs manquantes (NaN)           : {audit['missing_total']}")
@@ -488,31 +547,38 @@ def run_exploration(path: Path = DATA_PATH) -> None:
     )
     print("Décision doublons : CONSERVÉS (sessions distinctes sans horodatage ni IP).")
 
+    # Données nettoyées, et seulement les lignes autorisées (allow).
     df_clean = load_and_clean(path)
     allow_df = df_clean.loc[df_clean[ACTION_COLUMN] == ALLOW_ACTION].copy()
 
+    # 3. Quantiles du trafic allow : min, quartiles, médiane, 95e, 99e percentile et max de chaque mesure.
     print("\n=== 3. QUANTILES DU TRAFIC ALLOW (n = 37 640) ===")
     quantiles = allow_df[FEATURES].quantile([0.0, 0.25, 0.5, 0.75, 0.95, 0.99, 1.0])
     print(quantiles.to_string())
 
+    # Ligne allow la plus "typique" (proche de la médiane) : c'est le cas habituel de la démo.
     typical_row = find_typical_allow_row(allow_df)
     payload = {col: int(typical_row[col]) for col in FEATURES}
 
+    # 4. Découpage 60 / 20 / 20 des lignes allow.
     train_df, val_df, test_df = split_allow(df_clean, random_state=RANDOM_STATE)
     print(
         f"\n=== 4. DÉCOUPAGE ALLOW (D5) ===\n"
         f"train={len(train_df):,} (60 %) | val={len(val_df):,} (20 %) | test={len(test_df):,} (20 %)"
     )
 
+    # Entraînement du modèle de référence, puis seuils P95 / P99 sur les scores de validation.
     pipeline = _fit_reference_model(train_df)
     val_scores = -pipeline.score_samples(val_df[FEATURES])
     p95 = float(np.percentile(val_scores, 95))
     p99 = float(np.percentile(val_scores, 99))
 
+    # Score du cas typique, et sa position parmi les scores de validation (en %).
     typical_df = from_api_payload(payload)
     typical_score = float(-pipeline.score_samples(typical_df[FEATURES])[0])
     typical_pct = float((val_scores <= typical_score).mean() * 100.0)
 
+    # 5. Affichage du cas typique : sa ligne dans le CSV, ses 4 valeurs, son score et s'il déclenche une alerte.
     print("\n=== 5. LIGNE ALLOW TYPIQUE POUR LA DÉMO (D6) ===")
     print(f"Index pandas : {int(typical_row.name)} (ligne CSV {int(typical_row.name) + 2})")
     print(json.dumps(payload, indent=2))
@@ -521,11 +587,13 @@ def run_exploration(path: Path = DATA_PATH) -> None:
         f"seuil P95 = {p95:.4f}, seuil P99 = {p99:.4f}, alerte P99 = {typical_score > p99})"
     )
 
+    # Création des 2 graphiques.
     allow_plot = plot_allow_traffic(allow_df, typical_row, TRAFFIC_ALLOW_PLOT)
     comp_summary = compare_allow_vs_refused(
         df_clean, pipeline, val_scores, test_df, COMPARISON_PLOT
     )
 
+    # 6. Résumé chiffré de la comparaison allow / deny / drop, puis chemins des images créées.
     print("\n=== 6. COMPARAISON ALLOW vs DENY/DROP (D7) ===")
     for group_name, stats in comp_summary.items():
         print(
@@ -536,5 +604,6 @@ def run_exploration(path: Path = DATA_PATH) -> None:
     print(f"\nGraphiques générés :\n  - {allow_plot}\n  - {COMPARISON_PLOT}")
 
 
+# Ce bloc s'exécute seulement quand on lance "python explore.py" (pas quand on importe le fichier).
 if __name__ == "__main__":
     run_exploration()

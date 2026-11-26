@@ -4,6 +4,7 @@ La fixture `client` vient de tests/conftest.py : c'est un TestClient
 branché sur un petit modèle temporaire (pas besoin de lancer le serveur).
 """
 
+# On importe le module api pour pouvoir modifier MODEL_PATH dans le test "sans modèle".
 import api
 
 # Une ligne "allow" habituelle, valide (toutes les valeurs sont >= 0).
@@ -23,15 +24,24 @@ LIGNE_EXFILTRATION = {
     "elapsed_time_sec": 257,
 }
 
+# Chaque test suit le même schéma : 1) préparer la requête, 2) appeler l'API, 3) vérifier (assert).
+# Si un "assert" est faux, le test échoue et pytest affiche lequel.
+
+
+# ---------------------------------------------------------------- GET /health
 
 def test_health_renvoie_200_et_status_ok(client):
+    # L'API doit répondre 200 et {"status": "ok", ...}.
     reponse = client.get("/health")
 
     assert reponse.status_code == 200
     assert reponse.json()["status"] == "ok"
 
 
+# ---------------------------------------------------------------- POST /predict : cas valides
+
 def test_predict_accepte_une_ligne_valide(client):
+    # Une ligne valide renvoie 200, avec un score (nombre décimal) et is_anomaly (vrai/faux).
     reponse = client.post("/predict", json=LIGNE_VALIDE)
 
     assert reponse.status_code == 200
@@ -41,12 +51,14 @@ def test_predict_accepte_une_ligne_valide(client):
 
 
 def test_predict_ligne_habituelle_pas_d_alerte(client):
+    # Une ligne de trafic normal ne doit PAS déclencher d'alerte.
     reponse = client.post("/predict", json=LIGNE_VALIDE)
 
     assert reponse.json()["is_anomaly"] is False
 
 
 def test_predict_cas_synthetique_declenche_une_alerte(client):
+    # Le cas d'exfiltration DOIT déclencher une alerte.
     reponse = client.post("/predict", json=LIGNE_EXFILTRATION)
 
     assert reponse.status_code == 200
@@ -55,9 +67,11 @@ def test_predict_cas_synthetique_declenche_une_alerte(client):
 
 def test_predict_sans_modele_renvoie_503(client, monkeypatch, tmp_path):
     # On fait pointer l'API vers un fichier qui n'existe pas.
+    # monkeypatch : remplace temporairement une valeur le temps du test.
     monkeypatch.setattr(api, "MODEL_PATH", str(tmp_path / "absent.joblib"))
     api.load_model.cache_clear()
     try:
+        # Sans modèle, l'API doit répondre 503 avec un message qui parle de train.py.
         reponse = client.post("/predict", json=LIGNE_VALIDE)
 
         assert reponse.status_code == 503
@@ -67,6 +81,9 @@ def test_predict_sans_modele_renvoie_503(client, monkeypatch, tmp_path):
         monkeypatch.undo()
         api.load_model.cache_clear()
 
+
+# ---------------------------------------------------------------- POST /predict : valeurs négatives (422)
+# {**LIGNE_VALIDE, "champ": valeur} : copie de la ligne valide en changeant une seule valeur.
 
 def test_predict_refuse_bytes_sent_negatif(client):
     ligne = {**LIGNE_VALIDE, "bytes_sent": -10}
@@ -89,6 +106,7 @@ def test_predict_refuse_packets_negatif(client):
 
     reponse = client.post("/predict", json=ligne)
 
+    # On vérifie aussi le message exact en français.
     assert reponse.status_code == 422
     assert reponse.json()["detail"] == [
         {"field": "packets", "message": "Nombre de paquets ne peut pas être négatif."}
@@ -107,7 +125,10 @@ def test_predict_refuse_duree_negative(client):
     ]
 
 
+# ---------------------------------------------------------------- Messages d'erreur en français (issue #20)
+
 def test_erreur_octets_negatifs_message_en_francais(client):
+    # Critère d'acceptation de l'issue #20 : message exact pour bytes_sent = -1.
     ligne = {**LIGNE_VALIDE, "bytes_sent": -1}
 
     reponse = client.post("/predict", json=ligne)
@@ -119,6 +140,7 @@ def test_erreur_octets_negatifs_message_en_francais(client):
 
 
 def test_erreur_champ_manquant(client):
+    # On copie la ligne valide puis on supprime le champ "packets".
     ligne = {**LIGNE_VALIDE}
     del ligne["packets"]
 
@@ -131,6 +153,7 @@ def test_erreur_champ_manquant(client):
 
 
 def test_erreur_texte_au_lieu_d_un_nombre(client):
+    # Du texte à la place d'un nombre.
     ligne = {**LIGNE_VALIDE, "bytes_received": "beaucoup"}
 
     reponse = client.post("/predict", json=ligne)
@@ -142,6 +165,7 @@ def test_erreur_texte_au_lieu_d_un_nombre(client):
 
 
 def test_erreur_corps_vide(client):
+    # Requête sans aucun contenu : l'erreur porte sur "body" (tout le corps de la requête).
     reponse = client.post("/predict")
 
     assert reponse.status_code == 422

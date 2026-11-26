@@ -1,14 +1,20 @@
 """Entraînement du modèle Isolation Forest sur les 4 mesures réseau (issue #10)."""
 
+# Modules standards : json (écrire les métriques), Path (chemins), time (mesurer la durée).
 import json
 from pathlib import Path
 import time
 
+# joblib : sauvegarder le modèle dans un fichier. matplotlib : tracer des graphiques.
 import joblib
 import matplotlib
 
 # Backend sans écran pour fonctionner en local, en CI et dans Docker.
 matplotlib.use("Agg")
+# pyplot (graphiques), numpy (calcul), pandas (tableaux).
+# IsolationForest : le modèle de détection d'anomalies.
+# Pipeline : enchaîner plusieurs étapes (transformation puis modèle) en un seul objet.
+# FunctionTransformer : transformer les données avec une fonction (ici log1p).
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,6 +23,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
+# ---------------------------------------------------------------- Constantes
+# Les 4 mesures du modèle, et les chemins des fichiers lus ou produits par ce script.
 FEATURES = ["bytes_sent", "bytes_received", "packets", "elapsed_time_sec"]
 DATA_PATH = Path("data/log2.csv")
 ARTIFACTS_DIR = Path("artifacts")
@@ -24,11 +32,16 @@ MODEL_PATH = ARTIFACTS_DIR / "model.joblib"
 METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
 PLOT_PATH = ARTIFACTS_DIR / "scores_isolation_forest.png"
 SYNTHETIC_PATH = ARTIFACTS_DIR / "cas_synthetiques.csv"
+# 50 cas synthétiques par type d'anomalie (4 types -> 200 lignes).
 SYNTHETIC_PER_TYPE = 50
+# Taux d'alertes visé : 1 % du trafic normal déclenchera une alerte (le seuil est choisi pour ça).
 ALERT_RATE = 0.01
+# Autres taux testés pour comparer (0,5 %, 1 %, 2 %).
 ALERT_RATES_STUDY = (0.005, 0.01, 0.02)
+# Graine du hasard : résultats identiques à chaque lancement.
 RANDOM_STATE = 42
 
+# Correspondance "nom dans le CSV" -> "nom utilisé par l'API".
 COLUMN_MAPPING = {
     "Bytes Sent": "bytes_sent",
     "Bytes Received": "bytes_received",
@@ -37,17 +50,22 @@ COLUMN_MAPPING = {
 }
 
 # Fallback temporaire tant que features.py d'Aymen n'est pas mergé sur staging.
+# On essaie d'utiliser les fonctions d'Aymen ; si features.py n'existe pas (ImportError),
+# on utilise les versions simplifiées définies juste en dessous.
 try:
     from features import load_and_clean, split_allow
 except ImportError:
 
     def load_and_clean(path: str | Path = DATA_PATH) -> pd.DataFrame:
         """Charge le CSV, renomme les 4 mesures et retire les lignes invalides."""
+        # Lecture + renommage, puis on garde les 4 mesures et Action.
         df = pd.read_csv(path).rename(columns=COLUMN_MAPPING)
         df = df[FEATURES + ["Action"]].copy()
+        # Conversion en nombres (texte illisible -> NaN), puis suppression des lignes incomplètes.
         for col in FEATURES:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         df = df.dropna(subset=FEATURES + ["Action"])
+        # Action en minuscules, et on ne garde que les lignes sans valeur négative.
         df["Action"] = df["Action"].astype(str).str.strip().str.lower()
         valid_mask = (df[FEATURES] >= 0).all(axis=1)
         return df.loc[valid_mask].reset_index(drop=True)
@@ -58,6 +76,7 @@ except ImportError:
         """Découpe les lignes allow en train (60 %), validation (20 %) et test (20 %)."""
         # Référence de trafic normal uniquement ; 3 splits pour éviter toute fuite de données.
         allow_df = df.loc[df["Action"] == "allow"].copy()
+        # 60 % entraînement / 40 % de côté, puis les 40 % coupés en 20 % validation + 20 % test.
         train_df, temp_df = train_test_split(
             allow_df, test_size=0.4, random_state=random_state
         )
@@ -73,6 +92,7 @@ except ImportError:
 
 def build_isolation_forest_pipeline(random_state: int = RANDOM_STATE) -> Pipeline:
     """Construit le pipeline log1p + IsolationForest(n_estimators=200)."""
+    # Le pipeline fait 2 étapes à la suite : d'abord log1p, ensuite Isolation Forest.
     return Pipeline(
         steps=[
             # log1p compresse les grands écarts d'octets tout en gérant proprement les 0.
@@ -90,6 +110,7 @@ def train_isolation_forest(
     train_df: pd.DataFrame, random_state: int = RANDOM_STATE
 ) -> Pipeline:
     """Entraîne le pipeline uniquement sur les 4 mesures du jeu d'entraînement allow."""
+    # On crée le pipeline puis on l'entraîne (fit) sur les lignes normales d'entraînement.
     pipeline = build_isolation_forest_pipeline(random_state=random_state)
     pipeline.fit(train_df[FEATURES])
     return pipeline
@@ -117,6 +138,7 @@ def compute_threshold(
 
 def predict_anomalies(scores: np.ndarray, threshold: float) -> np.ndarray:
     """Déclenche une alerte (True) pour chaque score supérieur ou égal au seuil."""
+    # Renvoie un tableau de True / False : True = alerte.
     return scores >= threshold
 
 
@@ -125,8 +147,10 @@ def generate_synthetic_anomalies(
 ) -> pd.DataFrame:
     """Génère 4 types de lignes réseau atypiques reproductibles et sans valeurs négatives."""
     # Aucun label d'attaque dans log2.csv : ces 4 profils servent à mesurer le rappel.
+    # Générateur de nombres aléatoires avec graine fixe (mêmes cas à chaque lancement).
     rng = np.random.default_rng(random_state)
 
+    # Exfiltration (vol de données) : énormément d'octets ENVOYÉS et de paquets.
     exfiltration = pd.DataFrame(
         {
             "bytes_sent": rng.integers(5_000_000, 50_000_000, size=n_per_type),
@@ -136,6 +160,7 @@ def generate_synthetic_anomalies(
             "type": "exfiltration",
         }
     )
+    # Flood (inondation) : beaucoup de paquets, rien reçu, durée nulle.
     flood = pd.DataFrame(
         {
             "bytes_sent": rng.integers(0, 600, size=n_per_type),
@@ -145,6 +170,7 @@ def generate_synthetic_anomalies(
             "type": "flood",
         }
     )
+    # Connexion fantôme : très longue (1 à 4 heures) mais presque aucune donnée et 1 seul paquet.
     connexion_fantome = pd.DataFrame(
         {
             "bytes_sent": rng.integers(60, 200, size=n_per_type),
@@ -154,6 +180,7 @@ def generate_synthetic_anomalies(
             "type": "connexion_fantome",
         }
     )
+    # Téléchargement massif : énormément d'octets REÇUS.
     telechargement_massif = pd.DataFrame(
         {
             "bytes_sent": rng.integers(100, 5_000, size=n_per_type),
@@ -164,6 +191,7 @@ def generate_synthetic_anomalies(
         }
     )
 
+    # On colle les 4 tableaux les uns sous les autres (200 lignes au total).
     synthetic_df = pd.concat(
         [exfiltration, flood, connexion_fantome, telechargement_massif],
         ignore_index=True,
@@ -175,6 +203,7 @@ def save_synthetic_anomalies(
     synthetic_df: pd.DataFrame, path: Path = SYNTHETIC_PATH
 ) -> Path:
     """Sauvegarde les cas synthétiques dans artifacts/cas_synthetiques.csv."""
+    # Crée le dossier artifacts/ s'il n'existe pas, puis écrit le CSV (sans la colonne d'index).
     path.parent.mkdir(parents=True, exist_ok=True)
     synthetic_df.to_csv(path, index=False)
     return path
@@ -194,6 +223,7 @@ def save_model_artifact(
         "threshold": float(threshold),
         "features": list(features),
     }
+    # Écriture du dictionnaire dans artifacts/model.joblib (lu ensuite par api.py).
     joblib.dump(artifact, path)
     return path
 
@@ -209,11 +239,13 @@ def evaluate_detector(
     test_alerts = predict_anomalies(test_scores, threshold)
     synth_alerts = predict_anomalies(synthetic_scores, threshold)
 
+    # Rappel par type : pour chaque type d'anomalie, la part de cas détectés (moyenne des True).
     recall_by_type: dict[str, float] = {}
     for anomaly_type in pd.unique(synthetic_types):
         mask = (synthetic_types == anomaly_type).to_numpy()
         recall_by_type[str(anomaly_type)] = round(float(synth_alerts[mask].mean()), 6)
 
+    # Résumé : seuil, taux de fausses alertes sur le test, rappel sur les cas synthétiques.
     return {
         "threshold": round(float(threshold), 6),
         "false_alarm_rate": round(float(test_alerts.mean()), 6),
@@ -235,6 +267,7 @@ def evaluate_alert_rates(
 ) -> dict[str, dict[str, object]]:
     """Compare plusieurs taux d'alertes cibles (seuils fixés sur la validation)."""
     # Permet d'objectiver le compromis fausses alertes / rappel sans toucher au test.
+    # Pour chaque taux (0,5 %, 1 %, 2 %) : on calcule un seuil puis on évalue le détecteur.
     results: dict[str, dict[str, object]] = {}
     for rate in alert_rates:
         threshold = compute_threshold(val_scores, alert_rate=rate)
@@ -248,6 +281,7 @@ def save_metrics(
     metrics: dict[str, object], path: Path = METRICS_PATH
 ) -> Path:
     """Écrit le résumé d'évaluation dans artifacts/metrics.json."""
+    # Écrit le dictionnaire en JSON lisible (indentation, accents conservés).
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
@@ -264,6 +298,7 @@ def save_scores_histogram(
 ) -> Path:
     """Trace l'histogramme validation allow vs cas synthétiques avec la ligne de seuil."""
     # density=True normalise les deux groupes (7 528 vs 200 lignes) sur la même échelle.
+    # bins : 40 "barres" réparties entre le plus petit et le plus grand score des deux groupes.
     path.parent.mkdir(parents=True, exist_ok=True)
     bins = np.linspace(
         min(float(val_scores.min()), float(synthetic_scores.min())),
@@ -271,6 +306,7 @@ def save_scores_histogram(
         40,
     )
 
+    # Histogramme bleu : scores du trafic normal (validation).
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.hist(
         val_scores,
@@ -280,6 +316,7 @@ def save_scores_histogram(
         color="#2b6cb0",
         label=f"Validation allow (n={len(val_scores)})",
     )
+    # Histogramme rouge : scores des cas synthétiques atypiques.
     ax.hist(
         synthetic_scores,
         bins=bins,
@@ -288,6 +325,7 @@ def save_scores_histogram(
         color="#e53e3e",
         label=f"Cas synthétiques (n={len(synthetic_scores)})",
     )
+    # Ligne verticale en pointillés : le seuil d'alerte.
     ax.axvline(
         threshold,
         color="#1a202c",
@@ -295,6 +333,7 @@ def save_scores_histogram(
         linewidth=2,
         label=f"Seuil 1 % ({threshold:.4f})",
     )
+    # Titres, légende, puis enregistrement de l'image en PNG.
     ax.set_title("Scores Isolation Forest : validation allow vs cas synthétiques")
     ax.set_xlabel("Score d'anomalie (-score_samples)")
     ax.set_ylabel("Densité")
@@ -308,32 +347,39 @@ def save_scores_histogram(
 
 def main() -> None:
     """Charge les données, entraîne Isolation Forest et génère les cas synthétiques."""
+    # 1. Données : chargement, nettoyage et découpage des lignes allow en train / validation / test.
     df = load_and_clean(DATA_PATH)
     train_df, val_df, test_df = split_allow(df, random_state=RANDOM_STATE)
 
+    # 2. Entraînement du modèle, en mesurant combien de temps ça prend.
     start = time.perf_counter()
     pipeline = train_isolation_forest(train_df, random_state=RANDOM_STATE)
     elapsed = time.perf_counter() - start
 
+    # 3. Scores sur la validation : Isolation Forest et baseline (somme des octets).
     val_scores = compute_anomaly_scores(pipeline, val_df)
     baseline_val_scores = compute_baseline_scores(val_df)
 
+    # 4. Seuils fixés sur la validation (1 % d'alertes visé) pour les deux méthodes.
     iforest_threshold = compute_threshold(val_scores, alert_rate=ALERT_RATE)
     baseline_threshold = compute_threshold(baseline_val_scores, alert_rate=ALERT_RATE)
     iforest_val_alerts = predict_anomalies(val_scores, iforest_threshold)
     baseline_val_alerts = predict_anomalies(baseline_val_scores, baseline_threshold)
 
+    # 5. Cas synthétiques, puis sauvegarde du CSV et du modèle (artifacts/model.joblib).
     synthetic_df = generate_synthetic_anomalies(
         n_per_type=SYNTHETIC_PER_TYPE, random_state=RANDOM_STATE
     )
     synthetic_path = save_synthetic_anomalies(synthetic_df, SYNTHETIC_PATH)
     model_path = save_model_artifact(pipeline, iforest_threshold, FEATURES, MODEL_PATH)
 
+    # 6. Scores sur le test (fausses alertes) et sur les cas synthétiques (rappel), pour les 2 méthodes.
     test_scores = compute_anomaly_scores(pipeline, test_df)
     baseline_test_scores = compute_baseline_scores(test_df)
     synth_scores = compute_anomaly_scores(pipeline, synthetic_df)
     baseline_synth_scores = compute_baseline_scores(synthetic_df)
 
+    # 7. Toutes les métriques regroupées dans un dictionnaire (écrit ensuite dans metrics.json).
     metrics = {
         "alert_rate_target": ALERT_RATE,
         "random_state": RANDOM_STATE,
@@ -372,11 +418,13 @@ def main() -> None:
             ),
         },
     }
+    # 8. Sauvegarde des métriques (JSON) et du graphique (PNG).
     metrics_path = save_metrics(metrics, METRICS_PATH)
     plot_path = save_scores_histogram(
         val_scores, synth_scores, iforest_threshold, PLOT_PATH
     )
 
+    # 9. Affichage d'un résumé dans le terminal : tailles, durée, scores, seuils, résultats.
     print(
         f"Lignes allow : train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
     )
@@ -412,6 +460,7 @@ def main() -> None:
         f"({synthetic_df['type'].nunique()} types) -> {synthetic_path}"
     )
     print(f"Modèle exporté : {model_path} (seuil={iforest_threshold:.4f})")
+    # Comparaison baseline / Isolation Forest : fausses alertes et rappel.
     for name in ("baseline", "isolation_forest"):
         res = metrics[name]
         print(
@@ -421,6 +470,7 @@ def main() -> None:
             f"rappel synthétiques = {res['synthetic_recall'] * 100:.2f} % "
             f"({res['synthetic_detected']}/{res['synthetic_size']})"
         )
+    # Résultats pour chaque taux d'alertes étudié.
     print("Étude des taux d'alertes (0.5 %, 1 %, 2 %) :")
     for rate_key in ("0.5%", "1%", "2%"):
         bl = metrics["alert_rate_study"]["baseline"][rate_key]
@@ -436,5 +486,6 @@ def main() -> None:
     print(f"Graphique exporté : {plot_path}")
 
 
+# Ce bloc s'exécute seulement quand on lance "python train.py" (pas quand on importe le fichier).
 if __name__ == "__main__":
     main()
