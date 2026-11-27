@@ -216,3 +216,59 @@ docker compose down
 
 Pour valider #32, refaire la construction et les deux cas de démo sur une deuxième
 machine ; noter les résultats dans la PR avant de clôturer l'issue.
+
+## Installation locale
+
+Prérequis : Python 3.12 ou plus récent et Git. Depuis un clone propre :
+
+```sh
+git clone https://github.com/Justinbdna/Anomalie_Reseaux.git
+cd Anomalie_Reseaux
+python -m venv .venv
+# macOS/Linux
+source .venv/bin/activate
+# Windows PowerShell : .venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Le fichier `data/log2.csv` est volontairement ignoré par Git. Pour entraîner le
+modèle localement, télécharger l'archive UCI indiquée dans la section données,
+extraire `log2.csv` et le placer dans `data/`.
+
+## Entraînement et résultats
+
+```sh
+python train.py
+```
+
+Cette commande entraîne Isolation Forest sur les lignes `allow`, fixe le seuil
+sur la validation, puis écrit `artifacts/model.joblib`, `artifacts/metrics.json`
+et les graphiques/cas synthétiques dans `artifacts/`.
+
+## Lancement local de l'API et de l'interface
+
+Dans deux terminaux, avec l'environnement virtuel activé :
+
+```sh
+# Terminal 1
+uvicorn api:app --reload --host 127.0.0.1 --port 8000
+# Terminal 2
+streamlit run app.py
+```
+
+Ouvrir http://localhost:8501. L'API expose aussi sa documentation interactive
+sur http://localhost:8000/docs et son état sur http://localhost:8000/health.
+Le formulaire Streamlit appelle `POST /predict` avec les quatre mesures
+`bytes_sent`, `bytes_received`, `packets` et `elapsed_time_sec`.
+
+## Tests
+
+Les tests utilisent un petit jeu de données et un modèle temporaires ; ils ne
+requièrent donc ni `data/log2.csv` ni le modèle déjà exporté.
+
+```sh
+python -m pytest -v
+```
+
+Le workflow GitHub Actions exécute cette même commande avec Python 3.12 à chaque
+push et pull request vers `staging` ou `main`.
