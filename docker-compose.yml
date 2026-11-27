@@ -1,0 +1,50 @@
+# Docker Compose lance 2 conteneurs ensemble : "api" (FastAPI) et "app" (Streamlit).
+# Commande : docker compose up --build   puis ouvrir http://localhost:8501
+services:
+  # ---------------------------------------------------------------- API FastAPI
+  api:
+    # Construit l'image à partir du Dockerfile du dossier courant.
+    build: .
+    # Lance l'API. --host 0.0.0.0 : accepter les connexions venant de l'extérieur du conteneur.
+    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+    # "port de l'ordinateur : port du conteneur" -> l'API est visible sur http://localhost:8000.
+    ports:
+      - "8000:8000"
+    # Vérification de santé : toutes les 5 s, on appelle /health et on vérifie que le modèle est chargé.
+    # Le conteneur est déclaré "healthy" quand ça répond correctement.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; r = json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=5)); assert r['status'] == 'ok' and r['model_loaded'] is True"
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  # ---------------------------------------------------------------- Interface Streamlit
+  app:
+    # Même image que l'API, mais avec une autre commande : lancer Streamlit.
+    build: .
+    command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--browser.gatherUsageStats", "false"]
+    # L'interface est visible sur http://localhost:8501.
+    ports:
+      - "8501:8501"
+    # Dans Docker, l'API s'appelle "api" (nom du service) et non "localhost".
+    environment:
+      API_URL: http://api:8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8501/', timeout=5)"
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+    # Streamlit ne démarre qu'une fois l'API "healthy" (modèle chargé).
+    depends_on:
+      api:
+        condition: service_healthy

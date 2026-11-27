@@ -9,3 +9,16 @@ __pycache__/
 
 # Dépôt fil rouge de référence (non versionné ici)
 palmer-penguins/
+
+# Docs de cours et contexte Claude (local uniquement)
+docs_cours/
+CLAUDE.local.md
+
+# Env & Jupyter
+.env
+.env.*
+!.env.example
+.ipynb_checkpoints/
+
+# Données brutes (à télécharger localement depuis UCI dataset 542)
+data/log2.csv
